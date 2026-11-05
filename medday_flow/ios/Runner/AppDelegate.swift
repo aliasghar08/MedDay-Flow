@@ -192,6 +192,7 @@ import Network
       }
     }
 
+    let googleAuthChannel = FlutterMethodChannel(name: "daily_planner/native_google_auth", binaryMessenger: messenger)
     googleAuthChannel.setMethodCallHandler { call, result in
       switch call.method {
       case "signIn":
