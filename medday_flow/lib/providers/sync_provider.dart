@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:medday_flow/models/sync_config_model.dart';
 import 'package:medday_flow/services/sync/google_calendar_sync_service.dart';
+import 'package:medday_flow/services/sync/health_sync_service.dart';
 import 'package:medday_flow/services/sync/sync_manager.dart';
 import 'package:medday_flow/services/native_connectivity_service.dart';
 import 'package:medday_flow/services/native_google_sign_in.dart';
@@ -232,13 +233,29 @@ class SyncProvider extends ChangeNotifier {
     }
   }
 
-  Future<SyncResult> syncHealth(List<MedicationIntake> intakes) async {
+  Future<HealthSyncResult> syncHealth(List<MedicationIntake> intakes) async {
     _healthStatus = SyncStatus.syncing;
     notifyListeners();
 
     try {
-      final result = await _syncManager.syncHealthPlatform(intakes);
-      _healthStatus = result.isSuccess ? SyncStatus.success : SyncStatus.error;
+      final result = await _syncManager.healthService.syncMedications(intakes);
+      _healthStatus = result.success ? SyncStatus.success : SyncStatus.error;
+
+      final config = await _syncManager.loadConfig();
+      await _syncManager.saveConfig(config.copyWith(
+        lastHealthSync: DateTime.now(),
+        healthPermissionGranted: result.success,
+      ));
+
+      await _syncManager.addLog(SyncLogEntry(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        serviceType: SyncServiceType.healthPlatform,
+        timestamp: DateTime.now(),
+        isSuccess: result.success,
+        message: result.message,
+        itemsSynced: result.syncedCount,
+      ));
+
       _config = await _syncManager.loadConfig();
       _logs = await _syncManager.loadLogs();
       notifyListeners();
@@ -246,7 +263,7 @@ class SyncProvider extends ChangeNotifier {
     } catch (e) {
       _healthStatus = SyncStatus.error;
       notifyListeners();
-      return SyncResult.failure('Health sync failed: $e');
+      return HealthSyncResult(success: false, errorMessage: e.toString());
     }
   }
 

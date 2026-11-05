@@ -171,7 +171,11 @@ class SyncManager {
       itemsSynced: result.itemsSynced,
     ));
 
-    return result;
+    return SyncResult(
+      itemsSynced: result.syncedCount,
+      isSuccess: result.success,
+      message: result.message,
+    );
   }
 
   /// Perform unified synchronization across all enabled services

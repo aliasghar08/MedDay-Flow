@@ -1,13 +1,18 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/gestures.dart';
 import 'package:medday_flow/screens/forgot_pass.dart';
 import 'package:medday_flow/screens/home.dart';
 import 'package:medday_flow/screens/signup.dart';
+import 'package:medday_flow/screens/legal_view.dart';
+import 'package:medday_flow/services/apple_sign_in_service.dart';
 import 'package:medday_flow/services/native_google_sign_in.dart';
 import 'package:medday_flow/utils/passkey_auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:medday_flow/services/native_preferences_service.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -24,6 +29,8 @@ class _LoginPageState extends State<LoginPage> {
   bool _rememberMe = false;
   bool _isPasskeyAvailable = false;
   bool _isPasskeyLoading = false;
+  bool _isAppleSignInAvailable = defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.macOS;
+  bool _isAppleLoading = false;
 
   final PasskeyAuthService _passkeyAuthService = PasskeyAuthService();
 
@@ -32,6 +39,16 @@ class _LoginPageState extends State<LoginPage> {
     super.initState();
     _loadRememberMePreference();
     _checkPasskeyAvailability();
+    _checkAppleSignInAvailability();
+  }
+
+  Future<void> _checkAppleSignInAvailability() async {
+    final available = await AppleSignInService.isAvailable();
+    if (mounted) {
+      setState(() {
+        _isAppleSignInAvailable = available;
+      });
+    }
   }
 
   @override
@@ -322,6 +339,64 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  Future<void> signInWithApple() async {
+    setState(() => _isAppleLoading = true);
+    try {
+      final userCredential = await AppleSignInService.signInWithFirebase();
+      if (userCredential == null || userCredential.user == null) {
+        return; // User cancelled
+      }
+
+      final user = userCredential.user!;
+      final uid = user.uid;
+
+      final userDoc =
+          await FirebaseFirestore.instance.collection('users').doc(uid).get();
+
+      final String displayName = user.displayName ??
+          (user.email != null && user.email!.contains('@')
+              ? user.email!.split('@').first
+              : 'Apple User');
+
+      if (!userDoc.exists) {
+        await FirebaseFirestore.instance.collection('users').doc(uid).set({
+          'fullName': displayName,
+          'email': user.email ?? '',
+          'createdAt': Timestamp.now(),
+        });
+      }
+
+      // Save Remember Me preference for Apple sign-in
+      if (_rememberMe && user.email != null && user.email!.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('rememberMe', true);
+        await prefs.setString('savedEmail', user.email!);
+      }
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Welcome, $displayName!'),
+        ),
+      );
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const MyHome()),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Apple sign-in failed.')),
+        );
+      }
+      debugPrint('Apple sign-in error: $e');
+    } finally {
+      if (mounted) setState(() => _isAppleLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -494,6 +569,26 @@ class _LoginPageState extends State<LoginPage> {
 
                   const SizedBox(height: 12),
 
+                  if (_isAppleSignInAvailable) ...[
+                    Center(
+                      child: SizedBox(
+                        height: 48,
+                        child: SignInWithAppleButton(
+                          style: Theme.of(context).brightness == Brightness.dark
+                              ? SignInWithAppleButtonStyle.white
+                              : SignInWithAppleButtonStyle.black,
+                          borderRadius: BorderRadius.circular(8),
+                          onPressed: () {
+                            if (!_isAppleLoading) {
+                              signInWithApple();
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+
                   Center(
                     child: SizedBox(
                       child: OutlinedButton(
@@ -543,6 +638,59 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: RichText(
+                      textAlign: TextAlign.center,
+                      text: TextSpan(
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white60
+                              : Colors.black54,
+                          height: 1.5,
+                        ),
+                        children: [
+                          const TextSpan(text: 'By signing in, you agree to our '),
+                          TextSpan(
+                            text: 'Terms of Service',
+                            style: const TextStyle(
+                              color: Color(0xFF2563EB),
+                              fontWeight: FontWeight.w600,
+                              decoration: TextDecoration.underline,
+                            ),
+                            recognizer: TapGestureRecognizer()
+                              ..onTap = () => LegalView.showTermsDialog(context),
+                          ),
+                          const TextSpan(text: ' & '),
+                          TextSpan(
+                            text: 'Privacy Policy',
+                            style: const TextStyle(
+                              color: Color(0xFF10B981),
+                              fontWeight: FontWeight.w600,
+                              decoration: TextDecoration.underline,
+                            ),
+                            recognizer: TapGestureRecognizer()
+                              ..onTap = () => LegalView.showPrivacyPolicyDialog(context),
+                          ),
+                          const TextSpan(text: ',\nand acknowledge our '),
+                          TextSpan(
+                            text: 'Medical Disclaimer',
+                            style: const TextStyle(
+                              color: Color(0xFF6366F1),
+                              fontWeight: FontWeight.w600,
+                              decoration: TextDecoration.underline,
+                            ),
+                            recognizer: TapGestureRecognizer()
+                              ..onTap = () => LegalView.showMedicalDisclaimerDialog(context),
+                          ),
+                          const TextSpan(text: '.'),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                 ],
               ),
             ),

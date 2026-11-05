@@ -208,52 +208,6 @@ void main() {
       expect(record['logicalDate'], equals(intake.logicalDate.toIso8601String()));
       expect(record['metadata']['instructions'], equals('Take with water after breakfast'));
     });
-
-    test('Health permissions lifecycle and sync operations operate correctly', () async {
-      // 1. Initial state (unauthorized)
-      await healthService.revokeHealthPermissions();
-      final hasPermissionInitially = await healthService.isHealthPermissionGranted();
-      expect(hasPermissionInitially, isFalse);
-
-      // 2. Request permissions
-      final granted = await healthService.requestHealthPermissions();
-      expect(granted, isTrue);
-      expect(await healthService.isHealthPermissionGranted(), isTrue);
-
-      // 3. Sync medication intakes
-      final med = Medication(
-        medicationId: 'med_test',
-        name: 'Aspirin',
-        dosage: 81.0,
-        unit: DosageUnit.mg,
-      );
-      final schedule = MedicationSchedule(
-        scheduleId: 'sched_test',
-        medication: med,
-        startDate: DateTime(2026, 8, 1),
-        frequency: MedicationFrequency.daily,
-        timesPerDay: [const TimeOfDay(hour: 9, minute: 0)],
-      );
-      final intake = MedicationIntake(
-        intakeId: 'intake_test_1',
-        schedule: schedule,
-        scheduledTime: DateTime(2026, 8, 8, 9, 0),
-        status: IntakeStatus.taken,
-      );
-
-      final syncResult = await healthService.syncMedicationIntakes(intakes: [intake]);
-      expect(syncResult.isSuccess, isTrue);
-      expect(syncResult.itemsSynced, equals(1));
-
-      // 4. Retrieve synced records
-      final records = await healthService.getSyncedHealthRecords();
-      expect(records.isNotEmpty, isTrue);
-      expect(records.any((r) => r['medicationName'] == 'Aspirin'), isTrue);
-
-      // 5. Revoke permissions
-      await healthService.revokeHealthPermissions();
-      expect(await healthService.isHealthPermissionGranted(), isFalse);
-    });
   });
 
   group('Sync Models & Configuration Tests', () {

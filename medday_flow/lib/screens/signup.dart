@@ -1,8 +1,14 @@
+import 'dart:io' show Platform;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/gestures.dart';
+import 'package:medday_flow/screens/home.dart';
+import 'package:medday_flow/screens/legal_view.dart';
+import 'package:medday_flow/services/apple_sign_in_service.dart';
 import 'package:medday_flow/utils/passkey_auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -20,6 +26,7 @@ class _SignupPageState extends State<SignupPage> {
       TextEditingController();
 
   bool _isLoading = false;
+  bool _isAppleLoading = false;
 
   final RegExp vemail = RegExp(r'^[^@]+@[^@]+\.[^@]+$');
   final RegExp hasnum = RegExp(r'[0-9]');
@@ -85,8 +92,51 @@ class _SignupPageState extends State<SignupPage> {
     }
   }
 
+  Future<void> _signUpWithApple() async {
+    setState(() => _isAppleLoading = true);
+    try {
+      final credential = await AppleSignInService.signInWithFirebase();
+      if (credential == null) return; // user cancelled
+
+      final user = credential.user;
+      if (user != null) {
+        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (!doc.exists) {
+          await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+            'fullName': user.displayName ?? 'Apple User',
+            'email': user.email ?? '',
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Account created successfully!')),
+        );
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const MyHome()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Apple sign-in failed. Please try again.')),
+        );
+      }
+      debugPrint('Apple sign-in error on signup: $e');
+    } finally {
+      if (mounted) setState(() => _isAppleLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isAppleAvailable = Platform.isIOS || Platform.isMacOS;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(title: const Text("Sign Up")),
       body: Padding(
@@ -99,7 +149,7 @@ class _SignupPageState extends State<SignupPage> {
                       key: _formKey,
                       child: ListView(
                         children: [
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 16),
                           TextFormField(
                             controller: _nameController,
                             decoration: const InputDecoration(
@@ -190,21 +240,105 @@ class _SignupPageState extends State<SignupPage> {
                               style: TextStyle(fontSize: 18),
                             ),
                           ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text("Already have an account?"),
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text("Login"),
+
+                          if (isAppleAvailable) ...[
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(child: Divider(color: Colors.grey.shade400)),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                  child: Text('OR', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                                ),
+                                Expanded(child: Divider(color: Colors.grey.shade400)),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              height: 48,
+                              child: _isAppleLoading
+                                  ? const Center(child: CircularProgressIndicator())
+                                  : SignInWithAppleButton(
+                                      style: isDark
+                                          ? SignInWithAppleButtonStyle.white
+                                          : SignInWithAppleButtonStyle.black,
+                                      borderRadius: BorderRadius.circular(8),
+                                      text: 'Sign up with Apple',
+                                      onPressed: _signUpWithApple,
+                                    ),
+                            ),
+                          ],
+
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text("Already have an account?"),
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text("Login"),
+                              ),
+                            ],
                           ),
+
+                          const SizedBox(height: 20),
+                          // ── App Store Review Legal & Medical Compliance Footer ──
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Center(
+                              child: RichText(
+                                textAlign: TextAlign.center,
+                                text: TextSpan(
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: isDark ? Colors.white60 : Colors.black54,
+                                    height: 1.5,
+                                  ),
+                                  children: [
+                                    const TextSpan(text: 'By continuing, you agree to our '),
+                                    TextSpan(
+                                      text: 'Terms of Service',
+                                      style: const TextStyle(
+                                        color: Color(0xFF2563EB),
+                                        fontWeight: FontWeight.w600,
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                      recognizer: TapGestureRecognizer()
+                                        ..onTap = () => LegalView.showTermsDialog(context),
+                                    ),
+                                    const TextSpan(text: ' & '),
+                                    TextSpan(
+                                      text: 'Privacy Policy',
+                                      style: const TextStyle(
+                                        color: Color(0xFF10B981),
+                                        fontWeight: FontWeight.w600,
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                      recognizer: TapGestureRecognizer()
+                                        ..onTap = () => LegalView.showPrivacyPolicyDialog(context),
+                                    ),
+                                    const TextSpan(text: ',\nand acknowledge our '),
+                                    TextSpan(
+                                      text: 'Medical Disclaimer',
+                                      style: const TextStyle(
+                                        color: Color(0xFF6366F1),
+                                        fontWeight: FontWeight.w600,
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                      recognizer: TapGestureRecognizer()
+                                        ..onTap = () => LegalView.showMedicalDisclaimerDialog(context),
+                                    ),
+                                    const TextSpan(text: '.'),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
                         ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
       ),
     );
   }

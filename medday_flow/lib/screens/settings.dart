@@ -4,6 +4,7 @@ import 'package:medday_flow/utils/alarm_helper.dart';
 import 'package:medday_flow/utils/native_permission_service.dart';
 import 'package:medday_flow/utils/passkey_auth_service.dart';
 import 'package:medday_flow/screens/sync_integrations_page.dart';
+import 'package:medday_flow/screens/legal_view.dart';
 import 'package:flutter/material.dart';
 import 'package:medday_flow/services/custom_state_management.dart';
 import 'package:medday_flow/services/native_preferences_service.dart';
@@ -594,9 +595,9 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                         child: const Icon(Icons.sync_outlined, color: Color(0xFF2563EB), size: 20),
                       ),
-                      title: const Text('Google & Health Sync', style: TextStyle(fontWeight: FontWeight.w600)),
+                      title: const Text('Cloud Sync & Integrations', style: TextStyle(fontWeight: FontWeight.w600)),
                       subtitle: Text(
-                        'Google Calendar, Google Tasks & Health Connect / Apple Health',
+                        'Google Calendar & Google Tasks',
                         style: TextStyle(
                           fontSize: 12,
                           color: isDark ? Colors.white60 : Colors.black54,
@@ -757,7 +758,59 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ],
 
-                // ── 6. Account ──────────────────────────────────────────────
+                // ── 6. Legal & Compliance ───────────────────────────────────
+                _buildSectionHeader('LEGAL & COMPLIANCE'),
+                _buildSettingsCard(
+                  isDark: isDark,
+                  children: [
+                    ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2563EB).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.health_and_safety_outlined, color: Color(0xFF2563EB), size: 20),
+                      ),
+                      title: const Text('Medical & Health Disclaimer', style: TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: const Text('Not medical advice; consult a doctor', style: TextStyle(fontSize: 12)),
+                      trailing: const Icon(Icons.chevron_right, size: 20),
+                      onTap: () => LegalView.openLegalPage(context, initialTab: 0),
+                    ),
+                    const Divider(indent: 56),
+                    ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.privacy_tip_outlined, color: Color(0xFF10B981), size: 20),
+                      ),
+                      title: const Text('Privacy Policy', style: TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: const Text('Data usage & privacy protection', style: TextStyle(fontSize: 12)),
+                      trailing: const Icon(Icons.chevron_right, size: 20),
+                      onTap: () => LegalView.openLegalPage(context, initialTab: 1),
+                    ),
+                    const Divider(indent: 56),
+                    ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.description_outlined, color: Color(0xFF6366F1), size: 20),
+                      ),
+                      title: const Text('Terms of Service', style: TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: const Text('Terms & conditions of usage', style: TextStyle(fontSize: 12)),
+                      trailing: const Icon(Icons.chevron_right, size: 20),
+                      onTap: () => LegalView.openLegalPage(context, initialTab: 2),
+                    ),
+                  ],
+                ),
+
+                // ── 7. Account ──────────────────────────────────────────────
                 _buildSectionHeader('ACCOUNT'),
                 _buildSettingsCard(
                   isDark: isDark,

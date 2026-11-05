@@ -3,11 +3,9 @@ import 'package:medday_flow/providers/medication_provider.dart';
 import 'package:medday_flow/providers/sync_provider.dart';
 import 'package:medday_flow/providers/task_provider.dart';
 import 'package:medday_flow/services/custom_state_management.dart';
-import 'package:flutter/foundation.dart';
+import 'package:medday_flow/utils/medication_model/frequency_and_dosage.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:medday_flow/widgets/health_permission_prompt_dialog.dart';
 
 class SyncIntegrationsPage extends StatefulWidget {
   const SyncIntegrationsPage({super.key});
@@ -17,6 +15,10 @@ class SyncIntegrationsPage extends StatefulWidget {
 }
 
 class _SyncIntegrationsPageState extends State<SyncIntegrationsPage> {
+  bool _isSyncingCalendar = false;
+  bool _isSyncingTasks = false;
+  bool _isSyncingAll = false;
+
   String _formatTimestamp(DateTime? dt) {
     if (dt == null) return 'Never';
     final now = DateTime.now();
@@ -25,52 +27,6 @@ class _SyncIntegrationsPageState extends State<SyncIntegrationsPage> {
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     return DateFormat('MMM d, h:mm a').format(dt);
-  }
-
-  Future<void> _handleHealthToggle(
-    BuildContext context,
-    SyncProvider syncProvider,
-    bool enable,
-  ) async {
-    final isApple = defaultTargetPlatform == TargetPlatform.iOS;
-    final platformName = isApple ? 'Apple Health' : 'Google Fit';
-
-    if (enable) {
-      final confirmed = await HealthPermissionPromptDialog.showEnableConfirmDialog(
-        context,
-        isApple: isApple,
-      );
-      if (!confirmed) return;
-      if (!context.mounted) return;
-
-      final granted = await syncProvider.requestHealthPermissions();
-      if (!context.mounted) return;
-
-      if (granted) {
-        await syncProvider.toggleHealthSync(true);
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$platformName connected successfully! Taken doses will auto-sync.'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      } else {
-        await HealthPermissionPromptDialog.showPermissionRequiredDialog(
-          context,
-          isApple: isApple,
-        );
-      }
-    } else {
-      await syncProvider.toggleHealthSync(false);
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$platformName synchronization turned off.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
   }
 
   Widget _buildSectionHeader(String title) {
@@ -251,7 +207,7 @@ class _SyncIntegrationsPageState extends State<SyncIntegrationsPage> {
                             ),
                           ),
                           Text(
-                            'Calendar, Tasks & Health integration',
+                            'Google Calendar & Tasks integration',
                             style: TextStyle(
                               color: Colors.white70,
                               fontSize: 13,
@@ -270,8 +226,7 @@ class _SyncIntegrationsPageState extends State<SyncIntegrationsPage> {
                       '${[
                         if (syncProvider.isCalendarEnabled) 'Calendar',
                         if (syncProvider.isTasksEnabled) 'Tasks',
-                        if (syncProvider.isHealthEnabled) 'Health',
-                      ].length} of 3 active',
+                      ].length} of 2 active',
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
@@ -282,39 +237,53 @@ class _SyncIntegrationsPageState extends State<SyncIntegrationsPage> {
                       style: FilledButton.styleFrom(
                         backgroundColor: Colors.white,
                         foregroundColor: const Color(0xFF2563EB),
+                        disabledBackgroundColor: Colors.white.withValues(alpha: 0.85),
+                        disabledForegroundColor: const Color(0xFF2563EB),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       ),
-                      onPressed: syncProvider.isSyncingAll
+                      onPressed: (_isSyncingAll || syncProvider.isSyncingAll)
                           ? null
                           : () async {
-                              await syncProvider.syncAll(
-                                tasks: allTasks,
-                                intakes: allIntakes,
-                              );
-                              if (context.mounted) {
+                              setState(() => _isSyncingAll = true);
+                              try {
+                                await syncProvider.syncAll(
+                                  tasks: allTasks,
+                                  intakes: allIntakes,
+                                );
+                                if (!context.mounted) return;
+                                final takenCount = allIntakes
+                                    .where((i) => i.status == IntakeStatus.taken)
+                                    .length;
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Sync completed successfully'),
+                                  SnackBar(
+                                    content: Text(
+                                      takenCount > 0
+                                          ? 'Sync completed: $takenCount dose(s) & ${allTasks.length} task(s) synced'
+                                          : 'Universal sync complete across active services',
+                                    ),
+                                    backgroundColor: const Color(0xFF16A34A),
                                     behavior: SnackBarBehavior.floating,
                                   ),
                                 );
+                              } finally {
+                                if (mounted) setState(() => _isSyncingAll = false);
                               }
                             },
-                      icon: syncProvider.isSyncingAll
+                      icon: (_isSyncingAll || syncProvider.isSyncingAll)
                           ? const SizedBox(
                               width: 16,
                               height: 16,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: Color(0xFF2563EB),
+                                color: Colors.white,
                               ),
                             )
                           : const Icon(Icons.refresh, size: 18),
                       label: Text(
-                        syncProvider.isSyncingAll ? 'Syncing...' : 'Sync All Now',
+                        (_isSyncingAll || syncProvider.isSyncingAll) ? 'Syncing...' : 'Sync All Now',
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -389,19 +358,43 @@ class _SyncIntegrationsPageState extends State<SyncIntegrationsPage> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
+                      disabledBackgroundColor: const Color(0xFF4285F4),
+                      disabledForegroundColor: Colors.white,
                     ),
-                    onPressed: syncProvider.calendarStatus == SyncStatus.syncing
+                    onPressed: (_isSyncingCalendar || syncProvider.calendarStatus == SyncStatus.syncing)
                         ? null
                         : () async {
-                            final res = await syncProvider.syncCalendar(allTasks);
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(res.message), behavior: SnackBarBehavior.floating),
-                              );
+                            setState(() => _isSyncingCalendar = true);
+                            try {
+                              final res = await syncProvider.syncCalendar(allTasks);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(res.message),
+                                    backgroundColor: res.isSuccess ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            } finally {
+                              if (mounted) setState(() => _isSyncingCalendar = false);
                             }
                           },
-                    icon: const Icon(Icons.sync, size: 16),
-                    label: const Text('Sync Calendar'),
+                    icon: (_isSyncingCalendar || syncProvider.calendarStatus == SyncStatus.syncing)
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.sync, size: 16),
+                    label: Text(
+                      (_isSyncingCalendar || syncProvider.calendarStatus == SyncStatus.syncing)
+                          ? 'Syncing...'
+                          : 'Sync Calendar',
+                    ),
                   ),
                 ],
               ),
@@ -473,168 +466,42 @@ class _SyncIntegrationsPageState extends State<SyncIntegrationsPage> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
+                      disabledBackgroundColor: const Color(0xFF0F9D58),
+                      disabledForegroundColor: Colors.white,
                     ),
-                    onPressed: syncProvider.tasksStatus == SyncStatus.syncing
+                    onPressed: (_isSyncingTasks || syncProvider.tasksStatus == SyncStatus.syncing)
                         ? null
                         : () async {
-                            final res = await syncProvider.syncGoogleTasks(allTasks);
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(res.message), behavior: SnackBarBehavior.floating),
-                              );
-                            }
-                          },
-                    icon: const Icon(Icons.sync, size: 16),
-                    label: const Text('Sync Tasks'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-
-          // 4. Health Platform Card (Apple Health / Google Fit)
-          _buildSectionHeader(
-            defaultTargetPlatform == TargetPlatform.iOS
-                ? 'APPLE HEALTH (HEALTHKIT)'
-                : 'GOOGLE FIT (HEALTH CONNECT)',
-          ),
-          _buildCard(
-            isDark: isDark,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE11D48).withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.favorite_rounded, color: Color(0xFFE11D48), size: 24),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          defaultTargetPlatform == TargetPlatform.iOS
-                              ? 'Apple Health'
-                              : 'Google Fit',
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          defaultTargetPlatform == TargetPlatform.iOS
-                              ? 'Sync medication intake logs, dosages & adherence with Apple Health'
-                              : 'Sync medication intake logs, dosages & adherence with Google Fit & Health Connect',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isDark ? Colors.white60 : Colors.black54,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Switch(
-                    value: syncProvider.isHealthEnabled,
-                    onChanged: (val) => _handleHealthToggle(context, syncProvider, val),
-                  ),
-                ],
-              ),
-              const Divider(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Last Synced: ${_formatTimestamp(syncProvider.lastHealthSync)}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? Colors.white60 : Colors.black54,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      _buildStatusBadge(syncProvider.healthStatus),
-                    ],
-                  ),
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    onPressed: syncProvider.healthStatus == SyncStatus.syncing
-                        ? null
-                        : () async {
-                            final isApple = defaultTargetPlatform == TargetPlatform.iOS;
-                            final platformName = isApple ? 'Apple Health' : 'Google Fit';
-
-                            if (!syncProvider.isHealthEnabled) {
-                              await _handleHealthToggle(context, syncProvider, true);
-                              return;
-                            }
-
+                            setState(() => _isSyncingTasks = true);
                             try {
-                              final res = await syncProvider.syncHealth(allIntakes);
-                              if (!context.mounted) return;
-                              if (res.isSuccess) {
+                              final res = await syncProvider.syncGoogleTasks(allTasks);
+                              if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
-                                    content: Text(
-                                      res.message.isNotEmpty
-                                          ? res.message
-                                          : '$platformName synced successfully!',
-                                    ),
+                                    content: Text(res.message),
+                                    backgroundColor: res.isSuccess ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
                                     behavior: SnackBarBehavior.floating,
                                   ),
                                 );
-                              } else {
-                                final isPermissionError = res.message.toLowerCase().contains('permission') ||
-                                    res.message.toLowerCase().contains('not granted');
-                                if (isPermissionError) {
-                                  await HealthPermissionPromptDialog.showPermissionRequiredDialog(
-                                    context,
-                                    isApple: isApple,
-                                    details: res.message,
-                                  );
-                                } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(res.message),
-                                      backgroundColor: Colors.orange,
-                                      behavior: SnackBarBehavior.floating,
-                                    ),
-                                  );
-                                }
                               }
-                            } on PlatformException catch (e) {
-                              debugPrint('$platformName sync platform error: ${e.message}');
-                              if (!context.mounted) return;
-                              await HealthPermissionPromptDialog.showPermissionRequiredDialog(
-                                context,
-                                isApple: isApple,
-                                details: e.message,
-                              );
-                            } catch (e) {
-                              debugPrint('Unexpected error syncing health: $e');
-                              if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Note: $e'),
-                                  backgroundColor: Colors.orange,
-                                  behavior: SnackBarBehavior.floating,
-                                ),
-                              );
+                            } finally {
+                              if (mounted) setState(() => _isSyncingTasks = false);
                             }
                           },
-                    icon: const Icon(Icons.medical_services_outlined, size: 16),
+                    icon: (_isSyncingTasks || syncProvider.tasksStatus == SyncStatus.syncing)
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.sync, size: 16),
                     label: Text(
-                      defaultTargetPlatform == TargetPlatform.iOS
-                          ? 'Sync Apple Health'
-                          : 'Sync Google Fit',
+                      (_isSyncingTasks || syncProvider.tasksStatus == SyncStatus.syncing)
+                          ? 'Syncing...'
+                          : 'Sync Tasks',
                     ),
                   ),
                 ],
@@ -642,7 +509,7 @@ class _SyncIntegrationsPageState extends State<SyncIntegrationsPage> {
             ],
           ),
 
-          // 5. Sync Activity History
+          // 4. Sync Activity History
           _buildSectionHeader('RECENT SYNC ACTIVITY'),
           _buildCard(
             isDark: isDark,

@@ -13,6 +13,11 @@ val localProps = Properties().apply {
     if (file.exists()) file.inputStream().use { load(it) }
 }
 
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("key.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
 val flutterVersionCode = (localProps.getProperty("flutter.versionCode") ?: "1").toInt()
 val flutterVersionName = localProps.getProperty("flutter.versionName") ?: "1.0.0"
 
@@ -44,9 +49,27 @@ android {
         jvmTarget = "17"  // ✅ Changed from 21 to 17
     }
 
+    signingConfigs {
+        create("release") {
+            val storeFileProp = keystoreProperties.getProperty("storeFile")
+            if (storeFileProp != null) {
+                storeFile = file(storeFileProp)
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug") // Replace with release key later
+            val hasReleaseKey = keystoreProperties.getProperty("storeFile") != null &&
+                file(keystoreProperties.getProperty("storeFile")).exists()
+            signingConfig = if (hasReleaseKey) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

@@ -427,9 +427,9 @@ class MedicationProvider extends ChangeNotifier {
     }
   }
 
-  /// Automatically sync recorded intake to Apple Health / Google Fit without requiring manual sync
+  /// Automatically sync recorded intake to Google Fit (Android only) without requiring manual sync
   Future<void> _autoSyncIntakeToHealth(MedicationIntake intake) async {
-    // Only historical taken doses can be logged to Apple Health / Google Fit
+    // Only historical taken doses can be logged to Google Fit (Android only)
     if (intake.status != IntakeStatus.taken) return;
 
     try {
@@ -504,7 +504,7 @@ class MedicationProvider extends ChangeNotifier {
         await NativeAlarmHelper.cancelHybridAlarm(alarmId);
       }
 
-      // ✅ AUTOMATIC HEALTH SYNC: Instantly push the recorded intake to Apple Health / Google Fit
+      // ✅ AUTOMATIC HEALTH SYNC: Instantly push the recorded intake to Google Fit (Android only)
       _autoSyncIntakeToHealth(updated);
     } catch (e) {
       debugPrint('ERROR saving intake to Firestore: $e');
