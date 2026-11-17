@@ -324,3 +324,4 @@ class SmoothContentSwitcher extends StatelessWidget {
     );
   }
 }
+
