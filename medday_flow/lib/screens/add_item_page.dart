@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:medday_flow/utils/catalog.dart';
 import 'package:medday_flow/widgets/ad_banner_widget.dart';
+import 'package:medday_flow/widgets/premium_animations.dart';
 import 'package:intl/intl.dart';
 
 enum TaskType { oneTime, daily, weekly, monthly }
@@ -1094,7 +1095,7 @@ class _AddTaskPageState extends State<AddTaskPage> {
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: SingleChildScrollView(
-          child: Column(
+          child: StaggeredColumn(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Alarm System Status

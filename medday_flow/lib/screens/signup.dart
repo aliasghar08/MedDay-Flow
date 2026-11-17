@@ -1,10 +1,11 @@
 import 'dart:io' show Platform;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/gestures.dart';
-import 'package:medday_flow/screens/home.dart';
+import 'package:medday_flow/screens/main_navigation_shell.dart';
 import 'package:medday_flow/screens/legal_view.dart';
 import 'package:medday_flow/services/apple_sign_in_service.dart';
 import 'package:medday_flow/utils/passkey_auth_service.dart';
+import 'package:medday_flow/widgets/premium_animations.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -116,7 +117,7 @@ class _SignupPageState extends State<SignupPage> {
         );
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (_) => const MyHome()),
+          MaterialPageRoute(builder: (_) => const MainNavigationShell()),
           (route) => false,
         );
       }
@@ -159,7 +160,9 @@ class _SignupPageState extends State<SignupPage> {
                       key: _formKey,
                       child: ListView(
                         children: [
-                          const SizedBox(height: 16),
+                          StaggeredColumn(
+                            children: [
+                              const SizedBox(height: 16),
                           TextFormField(
                             controller: _nameController,
                             decoration: const InputDecoration(
@@ -345,6 +348,8 @@ class _SignupPageState extends State<SignupPage> {
                             ),
                           ),
                           const SizedBox(height: 16),
+                            ],
+                          ),
                         ],
                       ),
                     ),

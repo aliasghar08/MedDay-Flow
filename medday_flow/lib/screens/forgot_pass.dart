@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:medday_flow/widgets/premium_animations.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -54,7 +55,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
-          child: Column(
+          child: StaggeredColumn(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Text("Enter your email to receive a password reset link."),
               const SizedBox(height: 20),

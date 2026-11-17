@@ -1,15 +1,21 @@
 import 'dart:async';
+import 'package:flutter/services.dart';
 import 'package:medday_flow/providers/auth_provider.dart' as app_auth;
 import 'package:medday_flow/providers/medication_provider.dart';
 import 'package:medday_flow/providers/task_provider.dart';
 import 'package:medday_flow/screens/add_medication_page.dart';
 import 'package:medday_flow/screens/add_item_page.dart';
+import 'package:medday_flow/screens/medication_detail_page.dart';
 import 'package:medday_flow/screens/medication_list_page.dart';
 import 'package:medday_flow/utils/alarm_helper.dart';
 import 'package:medday_flow/utils/catalog.dart';
 import 'package:medday_flow/utils/drawer.dart';
 import 'package:medday_flow/utils/item.dart';
+import 'package:medday_flow/utils/medication_model/frequency_and_dosage.dart';
+import 'package:medday_flow/utils/medication_model/medication_intake.dart';
 import 'package:medday_flow/widgets/ad_banner_widget.dart';
+import 'package:medday_flow/widgets/medication_pill_graphic.dart';
+import 'package:medday_flow/widgets/premium_animations.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:medday_flow/services/custom_state_management.dart';
@@ -18,7 +24,8 @@ import 'dart:io' show Platform;
 enum TaskFilter { all, completed, incomplete, overdue }
 
 class MyHome extends StatefulWidget {
-  const MyHome({super.key});
+  final bool isInsideNavShell;
+  const MyHome({super.key, this.isInsideNavShell = false});
 
   @override
   State<MyHome> createState() => _MyHomeState();
@@ -326,6 +333,351 @@ class _MyHomeState extends State<MyHome> with SingleTickerProviderStateMixin {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Color _parseColor(String colorHex) {
+    try {
+      final hex = colorHex.replaceAll('#', '');
+      return Color(int.parse('FF$hex', radix: 16));
+    } catch (_) {
+      return const Color(0xFF2563EB);
+    }
+  }
+
+  /// Dedicated glassmorphic / elevated "Due Next" Quick-Log Card
+  Widget _buildDueNextQuickLogCard(MedicationProvider medProvider) {
+    if (medProvider.medications.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final now = DateTime.now();
+
+    // Priority 1: Actionable due now or overdue doses
+    // Priority 2: Next scheduled upcoming intake for today
+    MedicationIntake? activeIntake;
+    final dueNow = medProvider.dueNowIntakes;
+    if (dueNow.isNotEmpty) {
+      activeIntake = dueNow.first;
+    } else {
+      activeIntake = medProvider.nextUpcomingIntake;
+    }
+
+    final cardBgColor = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final borderColor = isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0);
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: SmoothContentSwitcher(
+        child: activeIntake == null
+            ? Container(
+                key: const ValueKey('all_caught_up_card'),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                decoration: BoxDecoration(
+                  color: cardBgColor,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: borderColor, width: 1.0),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.14),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.check_circle_rounded,
+                        color: Color(0xFF10B981),
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'All Caught Up for Now',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'All scheduled doses for today are logged. Great job!',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : _buildActiveDoseCard(activeIntake, isDark, cardBgColor, borderColor, now, medProvider),
+      ),
+    );
+  }
+
+  Widget _buildActiveDoseCard(
+    MedicationIntake intake,
+    bool isDark,
+    Color cardBgColor,
+    Color borderColor,
+    DateTime now,
+    MedicationProvider medProvider,
+  ) {
+    final med = intake.schedule.medication;
+    final medColor = _parseColor(med.color);
+    final secondaryColor = med.secondaryColor != null ? _parseColor(med.secondaryColor!) : null;
+
+    final isOverdue = intake.isOverdue(now);
+    final isDueNow = intake.isDueNow(now);
+    final diffMinutes = intake.scheduledTime.difference(now).inMinutes;
+    final timeStr = DateFormat('h:mm a').format(intake.scheduledTime);
+
+    String statusText;
+    Color statusColor;
+    if (isOverdue) {
+      statusText = 'Overdue • $timeStr';
+      statusColor = const Color(0xFFEF4444);
+    } else if (isDueNow) {
+      statusText = 'Due Now • $timeStr';
+      statusColor = const Color(0xFFF59E0B);
+    } else if (diffMinutes > 0 && diffMinutes <= 60) {
+      statusText = 'Due in ${diffMinutes}m • $timeStr';
+      statusColor = const Color(0xFF2563EB);
+    } else {
+      statusText = 'Due at $timeStr';
+      statusColor = const Color(0xFF10B981);
+    }
+
+    final dosageStr = '${med.dosage % 1 == 0 ? med.dosage.toInt() : med.dosage} ${med.unit.name}';
+
+    return TactilePressScale(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MedicationDetailPage(medication: med),
+          ),
+        );
+      },
+      child: Container(
+        key: ValueKey('due_next_${intake.intakeId}'),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: cardBgColor,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: isOverdue ? const Color(0xFFEF4444).withValues(alpha: 0.35) : borderColor,
+            width: isOverdue ? 1.5 : 1.0,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Top tag: "DUE NEXT" + Time status pill
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: statusColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'DUE NEXT',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
+                        color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: isDark ? 0.2 : 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    statusText,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: statusColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                // 3D Pill Graphic with Hero transition
+                Hero(
+                  tag: 'med_pill_${med.medicationId}',
+                  child: MedicationPillGraphic(
+                    shape: MedicationShape.fromString(med.shape),
+                    primaryColor: medColor,
+                    secondaryColor: secondaryColor,
+                    size: 46,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        med.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          if (med.formula != null && med.formula!.trim().isNotEmpty) ...[
+                            Flexible(
+                              child: Text(
+                                med.formula!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontStyle: FontStyle.italic,
+                                  fontSize: 12,
+                                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                                ),
+                              ),
+                            ),
+                            const Text(' • ', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          ],
+                          Text(
+                            dosageStr,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? Colors.grey.shade300 : const Color(0xFF475569),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                // Tactile One-Tap Take Button
+                TactilePressScale(
+                  targetScale: 0.92,
+                  onTap: () async {
+                    HapticFeedback.mediumImpact();
+                    await medProvider.markIntake(
+                      intake: intake,
+                      status: IntakeStatus.taken,
+                      actualTime: DateTime.now(),
+                    );
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        backgroundColor: isDark ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
+                        content: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF10B981),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.check, size: 14, color: Colors.white),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                '${med.name} logged as taken',
+                                style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white),
+                              ),
+                            ),
+                          ],
+                        ),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF2563EB).withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.check_rounded, color: Colors.white, size: 18),
+                        SizedBox(width: 6),
+                        Text(
+                          'Take',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -807,15 +1159,18 @@ class _MyHomeState extends State<MyHome> with SingleTickerProviderStateMixin {
             // Items in group
             if (index < count + taskList.length) {
               final task = taskList[index - count];
-              return ItemWidget(
-                key: ValueKey('task_${task.docId ?? task.title}'),
-                item: task,
-                searchQuery: taskProvider.searchQuery,
-                onEditDone: () async {
-                  if (authProvider.user != null) {
-                    await taskProvider.fetchTasks(authProvider.user!, showLoading: false);
-                  }
-                },
+              return StaggeredEntrance(
+                index: index,
+                child: ItemWidget(
+                  key: ValueKey('task_${task.docId ?? task.title}'),
+                  item: task,
+                  searchQuery: taskProvider.searchQuery,
+                  onEditDone: () async {
+                    if (authProvider.user != null) {
+                      await taskProvider.fetchTasks(authProvider.user!, showLoading: false);
+                    }
+                  },
+                ),
               );
             }
 
@@ -903,9 +1258,10 @@ class _MyHomeState extends State<MyHome> with SingleTickerProviderStateMixin {
               : NestedScrollView(
                   headerSliverBuilder: (context, innerBoxIsScrolled) => [
                     SliverToBoxAdapter(
-                      child: Column(
+                      child: StaggeredColumn(
                         children: [
                           _buildSummaryHeroCard(taskProvider, medProvider),
+                          _buildDueNextQuickLogCard(medProvider),
                           _buildSmartInsightBanner(medProvider),
                           _buildSearchBar(),
                           _buildTabBar(taskProvider),
@@ -930,7 +1286,7 @@ class _MyHomeState extends State<MyHome> with SingleTickerProviderStateMixin {
               icon: const Icon(Icons.add),
               label: const Text("Add"),
             ),
-      bottomNavigationBar: const AdBannerWidget(),
+      bottomNavigationBar: widget.isInsideNavShell ? null : const AdBannerWidget(),
     );
   }
 }

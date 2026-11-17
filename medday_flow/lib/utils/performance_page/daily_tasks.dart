@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:medday_flow/widgets/ad_banner_widget.dart';
 import 'package:medday_flow/widgets/charts/custom_charts.dart';
+import 'package:medday_flow/widgets/premium_animations.dart';
 import 'package:flutter/material.dart';
 
 class DailyTasksStats extends StatefulWidget {
@@ -271,17 +272,21 @@ class _DailyTasksStatsState extends State<DailyTasksStats> {
                 physics: const ClampingScrollPhysics(),
                 padding: const EdgeInsets.all(16),
                 children: [
-                  buildStatCard("📋 Daily Tasks", totalTasks.toString()),
-                  buildStatCard("✅ Completed", completedTasks.toString()),
-                  buildStatCard(
-                    "📊 Completion Rate",
-                    totalTasks > 0
-                        ? "${(completionRate * 100).toStringAsFixed(1)}%"
-                        : "0%",
+                  StaggeredColumn(
+                    children: [
+                      buildStatCard("📋 Daily Tasks", totalTasks.toString()),
+                      buildStatCard("✅ Completed", completedTasks.toString()),
+                      buildStatCard(
+                        "📊 Completion Rate",
+                        totalTasks > 0
+                            ? "${(completionRate * 100).toStringAsFixed(1)}%"
+                            : "0%",
+                      ),
+                      buildStatCard("🔥 Current Streak", "$currentStreak days"),
+                      buildStatCard("🏆 Longest Streak", "$longestStreak days"),
+                      buildStatCard("⚠️ Overdue Tasks", overdueTasks.toString()),
+                    ],
                   ),
-                  buildStatCard("🔥 Current Streak", "$currentStreak days"),
-                  buildStatCard("🏆 Longest Streak", "$longestStreak days"),
-                  buildStatCard("⚠️ Overdue Tasks", overdueTasks.toString()),
                   const SizedBox(height: 20),
                   Text(
                     "📈 Daily Task Completion",
@@ -339,12 +344,21 @@ class _DailyTasksStatsState extends State<DailyTasksStats> {
 
   Widget buildStatCard(String label, String value) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8),
+      elevation: isDark ? 0 : 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(
+          color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0),
+          width: 1.0,
+        ),
+      ),
+      margin: const EdgeInsets.symmetric(vertical: 6),
       child: ListTile(
-        leading: const Icon(Icons.analytics),
+        leading: const Icon(Icons.analytics_rounded),
         title: Text(label, style: theme.textTheme.bodyLarge),
-        trailing: Text(value, style: theme.textTheme.titleMedium),
+        trailing: Text(value, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
       ),
     );
   }

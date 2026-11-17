@@ -5,6 +5,7 @@ import 'package:medday_flow/providers/task_provider.dart';
 import 'package:medday_flow/services/custom_state_management.dart';
 import 'package:medday_flow/utils/medication_model/frequency_and_dosage.dart';
 import 'package:medday_flow/widgets/ad_banner_widget.dart';
+import 'package:medday_flow/widgets/premium_animations.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -163,8 +164,10 @@ class _SyncIntegrationsPageState extends State<SyncIntegrationsPage> {
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
-          // 1. Unified Master Sync Banner
-          Container(
+          StaggeredColumn(
+            children: [
+              // 1. Unified Master Sync Banner
+              Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
@@ -575,6 +578,8 @@ class _SyncIntegrationsPageState extends State<SyncIntegrationsPage> {
                   ),
                 ),
               ],
+            ],
+          ),
             ],
           ),
           const SizedBox(height: 30),

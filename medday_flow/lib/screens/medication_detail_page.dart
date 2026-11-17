@@ -11,6 +11,7 @@ import 'package:medday_flow/utils/medication_model/medication_model.dart';
 import 'package:medday_flow/utils/medication_model/medication_schedule_model.dart';
 import 'package:medday_flow/widgets/medication_pill_graphic.dart';
 import 'package:medday_flow/widgets/ad_banner_widget.dart';
+import 'package:medday_flow/widgets/premium_animations.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:medday_flow/services/custom_state_management.dart';
@@ -234,7 +235,9 @@ class _MedicationDetailPageState extends State<MedicationDetailPage>
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // Medication Hero Card
+        StaggeredColumn(
+          children: [
+            // Medication Hero Card
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
@@ -250,13 +253,16 @@ class _MedicationDetailPageState extends State<MedicationDetailPage>
           ),
           child: Row(
             children: [
-              MedicationPillGraphic(
-                shape: MedicationShape.fromString(widget.medication.shape),
-                primaryColor: medColor,
-                secondaryColor: widget.medication.secondaryColor != null
-                    ? _parseColor(widget.medication.secondaryColor!)
-                    : null,
-                size: 64,
+              Hero(
+                tag: 'med_pill_${widget.medication.medicationId}',
+                child: MedicationPillGraphic(
+                  shape: MedicationShape.fromString(widget.medication.shape),
+                  primaryColor: medColor,
+                  secondaryColor: widget.medication.secondaryColor != null
+                      ? _parseColor(widget.medication.secondaryColor!)
+                      : null,
+                  size: 64,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -624,6 +630,8 @@ class _MedicationDetailPageState extends State<MedicationDetailPage>
               ],
             ),
           ),
+          ],
+        ),
       ],
     );
   }

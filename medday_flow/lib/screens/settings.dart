@@ -9,13 +9,15 @@ import 'package:medday_flow/utils/passkey_auth_service.dart';
 import 'package:medday_flow/screens/sync_integrations_page.dart';
 import 'package:medday_flow/screens/legal_view.dart';
 import 'package:medday_flow/widgets/ad_banner_widget.dart';
+import 'package:medday_flow/widgets/premium_animations.dart';
 import 'package:flutter/material.dart';
 import 'package:medday_flow/services/custom_state_management.dart';
 import 'package:medday_flow/services/native_preferences_service.dart';
 import 'dart:io' show Platform;
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+  final bool isInsideNavShell;
+  const SettingsPage({super.key, this.isInsideNavShell = false});
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -326,23 +328,24 @@ class _SettingsPageState extends State<SettingsPage> {
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E293B) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+          color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0),
+          width: 1.0,
         ),
         boxShadow: [
           BoxShadow(
             color: isDark
                 ? Colors.black.withValues(alpha: 0.2)
-                : const Color(0xFF0F172A).withValues(alpha: 0.03),
-            blurRadius: 6,
+                : const Color(0xFF0F172A).withValues(alpha: 0.04),
+            blurRadius: 8,
             offset: const Offset(0, 2),
           ),
         ],
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         child: Column(
           children: children,
         ),
@@ -535,6 +538,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: !widget.isInsideNavShell,
         title: const Text('Settings'),
         actions: [
           // Refresh button to re-check all permission states
@@ -551,8 +555,10 @@ class _SettingsPageState extends State<SettingsPage> {
           : ListView(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               children: [
-                // ── 1. Preferences ──────────────────────────────────────────
-                _buildSectionHeader('PREFERENCES'),
+                StaggeredColumn(
+                  children: [
+                    // ── 1. Preferences ──────────────────────────────────────────
+                    _buildSectionHeader('PREFERENCES'),
                 _buildSettingsCard(
                   isDark: isDark,
                   children: [
@@ -937,9 +943,11 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
 
                 const SizedBox(height: 80),
+                  ],
+                ),
               ],
             ),
-      bottomNavigationBar: const AdBannerWidget(),
+      bottomNavigationBar: widget.isInsideNavShell ? null : const AdBannerWidget(),
     );
   }
 

@@ -16,7 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:medday_flow/screens/home.dart';
+import 'package:medday_flow/screens/main_navigation_shell.dart';
 import 'package:medday_flow/screens/login.dart';
 import 'package:medday_flow/screens/change_pass.dart';
 import 'package:medday_flow/screens/forgot_pass.dart';
@@ -324,7 +324,7 @@ class _MyAppBody extends StatelessWidget {
             },
             home: const AuthWrapper(),
             routes: {
-              "/home": (_) => const MyHome(),
+              "/home": (_) => const MainNavigationShell(),
               "/login": (_) => const LoginPage(),
               "/changepassword": (_) => const ChangePasswordPage(),
               "/forgotpass": (_) => const ForgotPasswordScreen(),
@@ -419,7 +419,7 @@ class AuthWrapper extends StatelessWidget {
         }
 
         final user = snapshot.data ?? authProvider.user;
-        return user != null ? const MyHome() : const LoginPage();
+        return user != null ? const MainNavigationShell() : const LoginPage();
       },
     );
   }

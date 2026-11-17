@@ -1,9 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/gestures.dart';
 import 'package:medday_flow/screens/forgot_pass.dart';
-import 'package:medday_flow/screens/home.dart';
+import 'package:medday_flow/screens/main_navigation_shell.dart';
 import 'package:medday_flow/screens/signup.dart';
 import 'package:medday_flow/screens/legal_view.dart';
+import 'package:medday_flow/widgets/premium_animations.dart';
 import 'package:medday_flow/services/apple_sign_in_service.dart';
 import 'package:medday_flow/services/native_google_sign_in.dart';
 import 'package:medday_flow/utils/passkey_auth_service.dart';
@@ -128,13 +129,13 @@ class _LoginPageState extends State<LoginPage> {
         );
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const MyHome()),
+          MaterialPageRoute(builder: (_) => const MainNavigationShell()),
         );
       } else if (FirebaseAuth.instance.currentUser != null) {
         if (!mounted) return;
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const MyHome()),
+          MaterialPageRoute(builder: (_) => const MainNavigationShell()),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -245,7 +246,7 @@ class _LoginPageState extends State<LoginPage> {
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const MyHome()),
+        MaterialPageRoute(builder: (_) => const MainNavigationShell()),
       );
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
@@ -327,7 +328,7 @@ class _LoginPageState extends State<LoginPage> {
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const MyHome()),
+        MaterialPageRoute(builder: (_) => const MainNavigationShell()),
       );
     } catch (e) {
       if (mounted) {
@@ -383,7 +384,7 @@ class _LoginPageState extends State<LoginPage> {
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const MyHome()),
+        MaterialPageRoute(builder: (_) => const MainNavigationShell()),
       );
     } catch (e) {
       if (mounted) {
@@ -416,7 +417,8 @@ class _LoginPageState extends State<LoginPage> {
           child: AutofillGroup(
             child: Form(
               key: _formKey,
-              child: Column(
+              child: StaggeredColumn(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   const Icon(
                     Icons.lock_outline,

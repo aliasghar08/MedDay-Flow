@@ -9,12 +9,14 @@ import 'package:medday_flow/utils/medication_model/medication_intake.dart';
 import 'package:medday_flow/utils/medication_model/medication_model.dart';
 import 'package:medday_flow/widgets/medication_pill_graphic.dart';
 import 'package:medday_flow/widgets/ad_banner_widget.dart';
+import 'package:medday_flow/widgets/premium_animations.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:medday_flow/services/custom_state_management.dart';
 
 class MedicationListPage extends StatefulWidget {
-  const MedicationListPage({super.key});
+  final bool isInsideNavShell;
+  const MedicationListPage({super.key, this.isInsideNavShell = false});
 
   @override
   State<MedicationListPage> createState() => _MedicationListPageState();
@@ -67,6 +69,7 @@ class _MedicationListPageState extends State<MedicationListPage>
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF6F8FA),
       appBar: AppBar(
+        automaticallyImplyLeading: !widget.isInsideNavShell,
         elevation: 0,
         backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         title: const Text(
@@ -145,7 +148,7 @@ class _MedicationListPageState extends State<MedicationListPage>
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text('Add Medication', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
-      bottomNavigationBar: const AdBannerWidget(),
+      bottomNavigationBar: widget.isInsideNavShell ? null : const AdBannerWidget(),
     );
   }
 
@@ -168,22 +171,26 @@ class _MedicationListPageState extends State<MedicationListPage>
       child: ListView(
         padding: const EdgeInsets.only(bottom: 90),
         children: [
-          // 1. Horizontal 7-Day Date Picker (Apple Health Strip)
-          _buildAppleHealthDateStrip(medProvider, isDark),
+          StaggeredColumn(
+            children: [
+              // 1. Horizontal 7-Day Date Picker (Apple Health Strip)
+              _buildAppleHealthDateStrip(medProvider, isDark),
 
-          const SizedBox(height: 12),
+              const SizedBox(height: 12),
 
-          // 2. Today's Adherence Summary Card
-          _buildAdherenceCard(medProvider, isDark),
+              // 2. Today's Adherence Summary Card
+              _buildAdherenceCard(medProvider, isDark),
 
-          // 3. Due Now / Action Required Hero Card (Apple Health Priority)
-          if (isToday && dueNow.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            _buildDueNowHeroCard(dueNow, medProvider, isDark),
-          ] else if (isToday && totalDoses > 0) ...[
-            const SizedBox(height: 12),
-            _buildUpNextBanner(medProvider, isDark),
-          ],
+              // 3. Due Now / Action Required Hero Card (Apple Health Priority)
+              if (isToday && dueNow.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                _buildDueNowHeroCard(dueNow, medProvider, isDark),
+              ] else if (isToday && totalDoses > 0) ...[
+                const SizedBox(height: 12),
+                _buildUpNextBanner(medProvider, isDark),
+              ],
+            ],
+          ),
 
           const SizedBox(height: 16),
 
@@ -753,8 +760,11 @@ class _MedicationListPageState extends State<MedicationListPage>
             ],
           ),
         ),
-        ...intakes.map(
-          (intake) => _buildAppleHealthIntakeCard(intake, medProvider, isDark),
+        ...intakes.asMap().entries.map(
+          (entry) => StaggeredEntrance(
+            index: entry.key,
+            child: _buildAppleHealthIntakeCard(entry.value, medProvider, isDark),
+          ),
         ),
         const SizedBox(height: 8),
       ],
@@ -775,44 +785,47 @@ class _MedicationListPageState extends State<MedicationListPage>
     final isTaken = intake.status == IntakeStatus.taken;
     final isSkipped = intake.status == IntakeStatus.skipped;
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isTaken
-              ? Colors.green.withValues(alpha: 0.3)
-              : (isDark ? Colors.grey.shade800 : Colors.grey.shade200),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+    return TactilePressScale(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MedicationDetailPage(medication: med),
           ),
-        ],
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => MedicationDetailPage(medication: med),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: isTaken
+                ? Colors.green.withValues(alpha: 0.3)
+                : (isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0)),
+            width: 1.0,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
-          );
-        },
+          ],
+        ),
         child: Padding(
           padding: const EdgeInsets.all(14.0),
           child: Row(
             children: [
-              // Medication Pill Graphic
-              MedicationPillGraphic(
-                shape: MedicationShape.fromString(med.shape),
-                primaryColor: medColor,
-                secondaryColor: med.secondaryColor != null ? _parseColor(med.secondaryColor!) : null,
-                size: 46,
+              // Medication Pill Graphic with Hero transition
+              Hero(
+                tag: 'med_pill_${med.medicationId}',
+                child: MedicationPillGraphic(
+                  shape: MedicationShape.fromString(med.shape),
+                  primaryColor: medColor,
+                  secondaryColor: med.secondaryColor != null ? _parseColor(med.secondaryColor!) : null,
+                  size: 46,
+                ),
               ),
               const SizedBox(width: 14),
 

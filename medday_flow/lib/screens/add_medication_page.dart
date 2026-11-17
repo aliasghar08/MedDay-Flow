@@ -8,6 +8,7 @@ import 'package:medday_flow/utils/medication_model/medication_schedule_model.dar
 import 'package:medday_flow/utils/medication_model/medication_classes.dart';
 import 'package:medday_flow/widgets/medication_pill_graphic.dart';
 import 'package:medday_flow/widgets/ad_banner_widget.dart';
+import 'package:medday_flow/widgets/premium_animations.dart';
 import 'package:medday_flow/widgets/searchable_medication_class_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:medday_flow/services/custom_state_management.dart';
@@ -734,12 +735,20 @@ class _AddMedicationPageState extends State<AddMedicationPage> {
           key: _formKey,
           child: ListView(
             children: [
-              // --------------------------------------------------------
-              // Visual Studio & Form Factor Card (Shape, Color, 3D Pill)
-              // --------------------------------------------------------
-              Card(
-                elevation: 1.5,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              StaggeredColumn(
+                children: [
+                  // --------------------------------------------------------
+                  // Visual Studio & Form Factor Card (Shape, Color, 3D Pill)
+                  // --------------------------------------------------------
+                  Card(
+                    elevation: 1.5,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      side: BorderSide(
+                        color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0),
+                        width: 1.0,
+                      ),
+                    ),
                 child: Padding(
                   padding: const EdgeInsets.all(18.0),
                   child: Column(
@@ -1383,6 +1392,8 @@ class _AddMedicationPageState extends State<AddMedicationPage> {
                             : 'Save Medication',
                         style: const TextStyle(fontSize: 16),
                       ),
+              ),
+                ],
               ),
             ],
           ),

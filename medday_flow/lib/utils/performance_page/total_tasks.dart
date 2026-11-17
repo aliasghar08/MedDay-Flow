@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:medday_flow/widgets/ad_banner_widget.dart';
 import 'package:medday_flow/widgets/charts/custom_charts.dart';
+import 'package:medday_flow/widgets/premium_animations.dart';
 import 'package:flutter/material.dart';
 
 class TotalTasks extends StatefulWidget {
@@ -216,13 +217,17 @@ class _AdvancedPerformancePageState extends State<TotalTasks> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                buildStatCard("📋 Total Tasks", totalTasks.toString(), theme),
-                buildStatCard("✅ Completed", completedTasks.toString(), theme),
-                buildStatCard("📊 Completion Rate",
-                    "${(completionRate * 100).toStringAsFixed(1)}%", theme),
-                buildStatCard("🔥 Current Streak", "$currentStreak days", theme),
-                buildStatCard("🏆 Longest Streak", "$longestStreak days", theme),
-                buildStatCard("⚠️ Overdue Tasks", overdueTasks.toString(), theme),
+                StaggeredColumn(
+                  children: [
+                    buildStatCard("📋 Total Tasks", totalTasks.toString(), theme),
+                    buildStatCard("✅ Completed", completedTasks.toString(), theme),
+                    buildStatCard("📊 Completion Rate",
+                        "${(completionRate * 100).toStringAsFixed(1)}%", theme),
+                    buildStatCard("🔥 Current Streak", "$currentStreak days", theme),
+                    buildStatCard("🏆 Longest Streak", "$longestStreak days", theme),
+                    buildStatCard("⚠️ Overdue Tasks", overdueTasks.toString(), theme),
+                  ],
+                ),
                 const SizedBox(height: 20),
                 Text("📈 Task Completion Pie Chart",
                     style: theme.textTheme.titleMedium),
@@ -274,11 +279,20 @@ class _AdvancedPerformancePageState extends State<TotalTasks> {
   }
 
   Widget buildStatCard(String label, String value, ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8),
+      elevation: isDark ? 0 : 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(
+          color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0),
+          width: 1.0,
+        ),
+      ),
+      margin: const EdgeInsets.symmetric(vertical: 6),
       color: theme.cardColor,
       child: ListTile(
-        leading: const Icon(Icons.analytics),
+        leading: const Icon(Icons.analytics_rounded),
         title: Text(label, style: theme.textTheme.bodyLarge),
         trailing: Text(value,
             style: theme.textTheme.titleMedium
