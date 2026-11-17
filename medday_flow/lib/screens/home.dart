@@ -858,14 +858,27 @@ class _MyHomeState extends State<MyHome> with SingleTickerProviderStateMixin {
         ],
       ),
       drawer: const MyDrawer(),
-      body: authProvider.isLoading
-          ? const Center(
+      body: (authProvider.isLoading ||
+              ((user != null) &&
+                  (taskProvider.isInitialLoading || medProvider.isInitialLoading)))
+          ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text("Loading tasks..."),
+                  CircularProgressIndicator(
+                    strokeWidth: 3,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    "Loading your day...",
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w500,
+                        ),
+                  ),
                 ],
               ),
             )

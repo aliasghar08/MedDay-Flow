@@ -7,6 +7,7 @@ import 'package:medday_flow/providers/task_provider.dart';
 import 'package:medday_flow/providers/theme_provider.dart';
 import 'package:medday_flow/providers/settings_provider.dart';
 import 'package:medday_flow/providers/sync_provider.dart';
+import 'package:medday_flow/services/native_preferences_service.dart';
 import 'package:medday_flow/utils/alarm_helper.dart';
 import 'package:medday_flow/utils/native_permission_service.dart';
 import 'package:medday_flow/utils/push_notifications.dart';
@@ -115,6 +116,9 @@ Future<void> _runStartupTasks() async {
 
     // Notification service
     await _initializeNotificationService();
+
+    // Ensure persistent preferences finish loading before first authenticated frame
+    await NativePreferencesService.getInstance();
 
     // Signal to the UI that it's safe to show the real app immediately
     _appReady.value = true;
@@ -332,7 +336,7 @@ class _MyAppBody extends StatelessWidget {
   }
 }
 
-// ✅ AuthWrapper unchanged
+// Clean themed AuthWrapper with waiting stream gate
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
@@ -340,53 +344,83 @@ class AuthWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     final authProvider = context.watch<app_auth.AuthProvider>();
 
-    if (authProvider.isLoading) {
-      return const Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Checking session...', style: TextStyle(fontSize: 16)),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (authProvider.error != null) {
-      return Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.error_outline, size: 64, color: Colors.red.shade400),
-                const SizedBox(height: 16),
-                const Text(
-                  'Authentication Error',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  authProvider.error!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: () => authProvider.retry(),
-                  child: const Text('Retry'),
-                ),
-              ],
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting || authProvider.isLoading) {
+          final theme = Theme.of(context);
+          return Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Icon(
+                      Icons.medication_rounded,
+                      size: 40,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  CircularProgressIndicator(
+                    strokeWidth: 3,
+                    valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Loading MedDay Flow...',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ),
-      );
-    }
+          );
+        }
 
-    return authProvider.isLoggedIn ? const MyHome() : const LoginPage();
+        if (authProvider.error != null) {
+          return Scaffold(
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.error_outline, size: 64, color: Colors.red.shade400),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Authentication Error',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      authProvider.error!,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      onPressed: () => authProvider.retry(),
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        final user = snapshot.data ?? authProvider.user;
+        return user != null ? const MyHome() : const LoginPage();
+      },
+    );
   }
 }

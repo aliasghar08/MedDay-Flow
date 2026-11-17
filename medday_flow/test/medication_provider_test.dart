@@ -1,3 +1,5 @@
+import 'package:medday_flow/providers/medication_provider.dart';
+import 'package:medday_flow/providers/task_provider.dart';
 import 'package:medday_flow/utils/medication_model/frequency_and_dosage.dart';
 import 'package:medday_flow/utils/medication_model/medication_intake.dart';
 import 'package:medday_flow/utils/medication_model/medication_model.dart';
@@ -8,6 +10,37 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('Provider Initial Hydration & Reset Lifecycle', () {
+    test('TaskProvider initializes with isInitialLoading = true and resets on clearTasks', () {
+      final taskProvider = TaskProvider();
+      expect(taskProvider.isInitialLoading, isTrue);
+      expect(taskProvider.isLoading, isTrue);
+      expect(taskProvider.tasks, isEmpty);
+
+      // Reset / clear tasks
+      taskProvider.clearTasks();
+      expect(taskProvider.isInitialLoading, isTrue);
+      expect(taskProvider.isLoading, isFalse);
+      expect(taskProvider.tasks, isEmpty);
+      expect(taskProvider.displayTasks, isEmpty);
+    });
+
+    test('MedicationProvider initializes with isInitialLoading = true and resets on reset()', () {
+      final medProvider = MedicationProvider();
+      expect(medProvider.isInitialLoading, isTrue);
+      expect(medProvider.medications, isEmpty);
+      expect(medProvider.schedules, isEmpty);
+      expect(medProvider.selectedDateIntakes, isEmpty);
+
+      // Reset
+      medProvider.reset();
+      expect(medProvider.isInitialLoading, isTrue);
+      expect(medProvider.medications, isEmpty);
+      expect(medProvider.schedules, isEmpty);
+      expect(medProvider.selectedDateIntakes, isEmpty);
+    });
+  });
 
   group('Medication & Intake Models', () {
     test('Medication serialization and deserialization with advanced formula and visual properties', () {

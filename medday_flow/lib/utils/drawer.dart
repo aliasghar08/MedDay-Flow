@@ -1,4 +1,6 @@
 import 'package:medday_flow/providers/auth_provider.dart' as app_auth;
+import 'package:medday_flow/providers/medication_provider.dart';
+import 'package:medday_flow/providers/task_provider.dart';
 import 'package:medday_flow/screens/login.dart';
 import 'package:medday_flow/screens/medication_list_page.dart';
 import 'package:medday_flow/screens/settings.dart';
@@ -295,6 +297,8 @@ class _MyDrawerState extends State<MyDrawer> {
     if (shouldLogout == true && mounted) {
       await context.read<app_auth.AuthProvider>().signOut();
       if (mounted) {
+        context.read<TaskProvider>().clearTasks();
+        context.read<MedicationProvider>().reset();
         Navigator.pop(context); // Close the drawer
         Navigator.pushReplacement(
           context,

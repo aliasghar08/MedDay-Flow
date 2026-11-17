@@ -1,6 +1,7 @@
 import 'package:medday_flow/providers/auth_provider.dart' as app_auth;
 import 'package:medday_flow/providers/theme_provider.dart';
 import 'package:medday_flow/providers/medication_provider.dart';
+import 'package:medday_flow/providers/task_provider.dart';
 import 'package:medday_flow/services/personalization_service.dart';
 import 'package:medday_flow/utils/alarm_helper.dart';
 import 'package:medday_flow/utils/native_permission_service.dart';
@@ -161,6 +162,8 @@ class _SettingsPageState extends State<SettingsPage> {
       try {
         await context.read<app_auth.AuthProvider>().signOut();
         if (context.mounted) {
+          context.read<TaskProvider>().clearTasks();
+          context.read<MedicationProvider>().reset();
           Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
         }
       } catch (e) {

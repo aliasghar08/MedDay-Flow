@@ -12,13 +12,20 @@ import 'package:medday_flow/utils/catalog.dart';
 import 'package:flutter/material.dart';
 
 class MedicationProvider extends ChangeNotifier {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore? _customFirestore;
+  FirebaseFirestore get _firestore => _customFirestore ?? FirebaseFirestore.instance;
+
+  MedicationProvider({FirebaseFirestore? firestore}) : _customFirestore = firestore;
 
   List<Medication> _medications = [];
   List<MedicationSchedule> _schedules = [];
   List<MedicationIntake> _selectedDateIntakes = [];
   DateTime _selectedDate = MedicationIntake.getLogicalDate(DateTime.now());
   bool _isLoading = false;
+  bool _isInitialLoading = true;
+  bool _hasReceivedMedicationsSnapshot = false;
+  bool _hasReceivedSchedulesSnapshot = false;
+  Timer? _initialLoadingTimeout;
   String? _errorMessage;
   String? _userId;
 
@@ -60,6 +67,7 @@ class MedicationProvider extends ChangeNotifier {
   List<MedicationIntake> get todayIntakes => selectedDateIntakes;
   DateTime get selectedDate => _selectedDate;
   bool get isLoading => _isLoading;
+  bool get isInitialLoading => _isInitialLoading;
   String? get errorMessage => _errorMessage;
 
   // Personalization Getters
@@ -190,12 +198,37 @@ class MedicationProvider extends ChangeNotifier {
     return groups;
   }
 
+  void _checkInitialLoadingComplete() {
+    if (_hasReceivedMedicationsSnapshot && _hasReceivedSchedulesSnapshot) {
+      if (_isInitialLoading) {
+        _isInitialLoading = false;
+        _isLoading = false;
+        _initialLoadingTimeout?.cancel();
+        _initialLoadingTimeout = null;
+        notifyListeners();
+      }
+    }
+  }
+
   /// Initialize and load all medication data for a user
   Future<void> loadMedications(String userId) async {
     _userId = userId;
     _isLoading = true;
+    _isInitialLoading = true;
     _errorMessage = null;
+    _hasReceivedMedicationsSnapshot = false;
+    _hasReceivedSchedulesSnapshot = false;
     notifyListeners();
+
+    _initialLoadingTimeout?.cancel();
+    _initialLoadingTimeout = Timer(const Duration(seconds: 3), () {
+      if (_isInitialLoading) {
+        debugPrint('MedicationProvider: Initial hydration safety timeout reached (3s fallback)');
+        _isInitialLoading = false;
+        _isLoading = false;
+        notifyListeners();
+      }
+    });
 
     try {
       _medicationsSubscription?.cancel();
@@ -212,7 +245,13 @@ class MedicationProvider extends ChangeNotifier {
                 snapshot.docs.map((doc) {
                   return Medication.fromMap(doc.data(), doc.id);
                 }).toList();
+            _hasReceivedMedicationsSnapshot = true;
             _rebuildSchedulesAndIntakes();
+            _checkInitialLoadingComplete();
+          }, onError: (error) {
+            debugPrint('❌ Medication stream error: $error');
+            _hasReceivedMedicationsSnapshot = true;
+            _checkInitialLoadingComplete();
           });
 
       // 2. Fetch schedules via stream
@@ -223,7 +262,13 @@ class MedicationProvider extends ChangeNotifier {
           .snapshots()
           .listen((snapshot) {
             _rawSchedulesDocs = snapshot.docs;
+            _hasReceivedSchedulesSnapshot = true;
             _rebuildSchedulesAndIntakes();
+            _checkInitialLoadingComplete();
+          }, onError: (error) {
+            debugPrint('❌ Schedules stream error: $error');
+            _hasReceivedSchedulesSnapshot = true;
+            _checkInitialLoadingComplete();
           });
 
       // 3. Start periodic timers for automatic intake lifecycle management
@@ -231,8 +276,10 @@ class MedicationProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('❌ Error loading medications: $e');
       _errorMessage = 'Failed to load medications: $e';
-    } finally {
+      _isInitialLoading = false;
       _isLoading = false;
+      _initialLoadingTimeout?.cancel();
+      _initialLoadingTimeout = null;
       notifyListeners();
     }
   }
@@ -1031,8 +1078,33 @@ class MedicationProvider extends ChangeNotifier {
     _circadianResetTimer = null;
   }
 
+  /// Reset all medication data and listeners (e.g. on user sign-out)
+  void reset() {
+    _initialLoadingTimeout?.cancel();
+    _initialLoadingTimeout = null;
+    _medicationsSubscription?.cancel();
+    _schedulesSubscription?.cancel();
+    for (var sub in _intakesSubscriptions.values) {
+      sub.cancel();
+    }
+    _intakesSubscriptions.clear();
+    _rawRecordedIntakes.clear();
+    _rawSchedulesDocs.clear();
+    _medications = [];
+    _schedules = [];
+    _selectedDateIntakes = [];
+    _hasReceivedMedicationsSnapshot = false;
+    _hasReceivedSchedulesSnapshot = false;
+    _isLoading = false;
+    _isInitialLoading = true;
+    _userId = null;
+    _stopPeriodicTimers();
+    notifyListeners();
+  }
+
   @override
   void dispose() {
+    _initialLoadingTimeout?.cancel();
     _medicationsSubscription?.cancel();
     _schedulesSubscription?.cancel();
     for (var sub in _intakesSubscriptions.values) {

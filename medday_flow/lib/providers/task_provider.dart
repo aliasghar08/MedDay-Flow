@@ -9,11 +9,14 @@ class TaskProvider extends ChangeNotifier {
   List<Task> _tasks = [];
   List<Task> _displayTasks = [];
   bool _isLoading = true;
+  bool _isInitialLoading = true;
+  Timer? _initialLoadingTimeout;
   String _searchQuery = "";
 
   List<Task> get tasks => _tasks;
   List<Task> get displayTasks => _displayTasks;
   bool get isLoading => _isLoading;
+  bool get isInitialLoading => _isInitialLoading;
   String get searchQuery => _searchQuery;
 
   // Analytics & Dashboard Summary Getters
@@ -236,6 +239,16 @@ class TaskProvider extends ChangeNotifier {
       notifyListeners();
     }
 
+    _initialLoadingTimeout?.cancel();
+    _initialLoadingTimeout = Timer(const Duration(seconds: 3), () {
+      if (_isInitialLoading) {
+        debugPrint("TaskProvider: Initial hydration safety timeout reached (3s fallback)");
+        _isInitialLoading = false;
+        _isLoading = false;
+        notifyListeners();
+      }
+    });
+
     _taskSubscription?.cancel();
     
     _taskSubscription = FirebaseFirestore.instance
@@ -245,6 +258,9 @@ class TaskProvider extends ChangeNotifier {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .listen((snapshot) async {
+      _initialLoadingTimeout?.cancel();
+      _initialLoadingTimeout = null;
+
       final tasks = snapshot.docs
           .map((doc) => Task.fromMap(doc.data(), docId: doc.id))
           .toList();
@@ -254,16 +270,21 @@ class TaskProvider extends ChangeNotifier {
       _tasks = tasks;
       _displayTasks = updatedTasks;
       _isLoading = false;
+      _isInitialLoading = false;
       notifyListeners();
     }, onError: (error) {
       debugPrint("Error listening to tasks: $error");
+      _initialLoadingTimeout?.cancel();
+      _initialLoadingTimeout = null;
       _isLoading = false;
+      _isInitialLoading = false;
       notifyListeners();
     });
   }
 
   @override
   void dispose() {
+    _initialLoadingTimeout?.cancel();
     _taskSubscription?.cancel();
     super.dispose();
   }
@@ -294,9 +315,12 @@ class TaskProvider extends ChangeNotifier {
   }
 
   void clearTasks() {
+    _initialLoadingTimeout?.cancel();
+    _initialLoadingTimeout = null;
     _tasks.clear();
     _displayTasks.clear();
     _isLoading = false;
+    _isInitialLoading = true;
     notifyListeners();
   }
 }

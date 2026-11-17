@@ -107,14 +107,23 @@ class _MedicationListPageState extends State<MedicationListPage>
           ],
         ),
       ),
-      body: medProvider.isLoading
-          ? const Center(
+      body: (medProvider.isInitialLoading || (medProvider.isLoading && medProvider.medications.isEmpty))
+          ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Loading medications...', style: TextStyle(color: Colors.grey)),
+                  CircularProgressIndicator(
+                    strokeWidth: 3,
+                    valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Loading medications...',
+                    style: TextStyle(
+                      color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ],
               ),
             )
@@ -1087,6 +1096,9 @@ class _MedicationListPageState extends State<MedicationListPage>
   // TAB 2: MY MEDICATIONS LIST
   // ==========================================
   Widget _buildMedicationsListTab(MedicationProvider medProvider, bool isDark) {
+    if (medProvider.isInitialLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
     final medications = medProvider.medications;
 
     if (medications.isEmpty) {
