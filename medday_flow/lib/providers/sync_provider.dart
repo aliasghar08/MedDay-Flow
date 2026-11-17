@@ -191,6 +191,14 @@ class SyncProvider extends ChangeNotifier {
   }
 
   // Synchronization Operations
+  Future<String?> _refreshGoogleToken() async {
+    final refreshed = await NativeGoogleSignIn.refreshAccessToken();
+    if (refreshed != null && refreshed.isNotEmpty) {
+      _googleAccessToken = refreshed;
+    }
+    return _googleAccessToken;
+  }
+
   Future<SyncResult> syncCalendar(List<Task> tasks) async {
     _calendarStatus = SyncStatus.syncing;
     notifyListeners();
@@ -199,6 +207,7 @@ class SyncProvider extends ChangeNotifier {
       final result = await _syncManager.syncGoogleCalendar(
         tasks,
         accessToken: _googleAccessToken,
+        onTokenRefresh: _refreshGoogleToken,
       );
       _calendarStatus = result.isSuccess ? SyncStatus.success : SyncStatus.error;
       _config = await _syncManager.loadConfig();
@@ -220,6 +229,7 @@ class SyncProvider extends ChangeNotifier {
       final result = await _syncManager.syncGoogleTasks(
         tasks,
         accessToken: _googleAccessToken,
+        onTokenRefresh: _refreshGoogleToken,
       );
       _tasksStatus = result.isSuccess ? SyncStatus.success : SyncStatus.error;
       _config = await _syncManager.loadConfig();
@@ -279,14 +289,22 @@ class SyncProvider extends ChangeNotifier {
 
     try {
       if (_config.googleCalendarEnabled) {
-        await _syncManager.syncGoogleCalendar(tasks, accessToken: _googleAccessToken);
+        await _syncManager.syncGoogleCalendar(
+          tasks,
+          accessToken: _googleAccessToken,
+          onTokenRefresh: _refreshGoogleToken,
+        );
         _calendarStatus = SyncStatus.success;
       }
       if (_config.googleTasksEnabled) {
-        await _syncManager.syncGoogleTasks(tasks, accessToken: _googleAccessToken);
+        await _syncManager.syncGoogleTasks(
+          tasks,
+          accessToken: _googleAccessToken,
+          onTokenRefresh: _refreshGoogleToken,
+        );
         _tasksStatus = SyncStatus.success;
       }
-      if (_config.healthSyncEnabled) {
+      if (_config.healthSyncEnabled && HealthSyncService.isSupported) {
         await _syncManager.syncHealthPlatform(intakes);
         _healthStatus = SyncStatus.success;
       }

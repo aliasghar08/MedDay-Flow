@@ -23,6 +23,7 @@ import 'package:medday_flow/services/custom_state_management.dart';
 import 'package:medday_flow/utils/app_theme.dart';
 import 'package:medday_flow/utils/reset_task.dart';
 import 'package:medday_flow/widgets/app_lock_wrapper.dart';
+import 'package:medday_flow/services/ad_service.dart';
 import 'firebase_options.dart';
 
 // Global navigator key for notifications
@@ -121,6 +122,7 @@ Future<void> _runStartupTasks() async {
     // FCM + platform services run asynchronously without blocking the UI
     _initializeFCM().catchError((e) => debugPrint('FCM init non-fatal error: $e'));
     _initializePlatformServices().catchError((e) => debugPrint('Platform services non-fatal error: $e'));
+    AdService.instance.initialize().catchError((e) => debugPrint('AdService init non-fatal error: $e'));
 
     // Background task
     resetAllTasksIfNeeded();

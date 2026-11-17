@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:medday_flow/widgets/ad_banner_widget.dart';
 import 'package:medday_flow/widgets/charts/custom_charts.dart';
 import 'package:flutter/material.dart';
 
@@ -268,6 +269,7 @@ class _AdvancedPerformancePageState extends State<TotalTasks> {
                 const SizedBox(height: 23),
               ],
             ),
+      bottomNavigationBar: const AdBannerWidget(),
     );
   }
 

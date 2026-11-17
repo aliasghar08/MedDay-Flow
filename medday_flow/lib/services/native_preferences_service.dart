@@ -11,23 +11,43 @@ class NativePreferencesService {
   static NativePreferencesService? _instance;
   final Map<String, Object?> _preferenceCache;
 
+  /// Test-only bypass flag to prevent invoking platform channels in unit tests.
+  @visibleForTesting
+  static bool enableTestMode = false;
+
   NativePreferencesService._(this._preferenceCache);
+
+  /// Configures mock preferences for testing without platform channels.
+  @visibleForTesting
+  static void setMockInitialValues([Map<String, Object?> values = const {}]) {
+    enableTestMode = true;
+    _instance = NativePreferencesService._(Map<String, Object?>.from(values));
+  }
+
+  /// Resets test state
+  @visibleForTesting
+  static void reset() {
+    _instance = null;
+    enableTestMode = false;
+  }
 
   /// Get the singleton instance of NativePreferencesService
   static Future<NativePreferencesService> getInstance() async {
     if (_instance == null) {
       final Map<String, Object?> cache = {};
-      try {
-        final dynamic allValues = await _channel.invokeMethod('getAll');
-        if (allValues is Map) {
-          allValues.forEach((key, value) {
-            if (key is String && value != null) {
-              cache[key] = value;
-            }
-          });
+      if (!enableTestMode) {
+        try {
+          final dynamic allValues = await _channel.invokeMethod('getAll');
+          if (allValues is Map) {
+            allValues.forEach((key, value) {
+              if (key is String && value != null) {
+                cache[key] = value;
+              }
+            });
+          }
+        } catch (e) {
+          debugPrint('NativePreferencesService: Error fetching initial prefs: $e');
         }
-      } catch (e) {
-        debugPrint('NativePreferencesService: Error fetching initial prefs: $e');
       }
       _instance = NativePreferencesService._(cache);
     }
@@ -106,6 +126,7 @@ class NativePreferencesService {
   /// Saves a boolean [value] to persistent storage in the background.
   Future<bool> setBool(String key, bool value) async {
     _preferenceCache[key] = value;
+    if (enableTestMode) return true;
     try {
       final bool? success = await _channel.invokeMethod<bool>('setBool', {
         'key': key,
@@ -121,6 +142,7 @@ class NativePreferencesService {
   /// Saves an integer [value] to persistent storage in the background.
   Future<bool> setInt(String key, int value) async {
     _preferenceCache[key] = value;
+    if (enableTestMode) return true;
     try {
       final bool? success = await _channel.invokeMethod<bool>('setInt', {
         'key': key,
@@ -136,6 +158,7 @@ class NativePreferencesService {
   /// Saves a double [value] to persistent storage in the background.
   Future<bool> setDouble(String key, double value) async {
     _preferenceCache[key] = value;
+    if (enableTestMode) return true;
     try {
       final bool? success = await _channel.invokeMethod<bool>('setDouble', {
         'key': key,
@@ -151,6 +174,7 @@ class NativePreferencesService {
   /// Saves a string [value] to persistent storage in the background.
   Future<bool> setString(String key, String value) async {
     _preferenceCache[key] = value;
+    if (enableTestMode) return true;
     try {
       final bool? success = await _channel.invokeMethod<bool>('setString', {
         'key': key,
@@ -166,6 +190,7 @@ class NativePreferencesService {
   /// Saves a list of strings [value] to persistent storage in the background.
   Future<bool> setStringList(String key, List<String> value) async {
     _preferenceCache[key] = value;
+    if (enableTestMode) return true;
     try {
       final bool? success = await _channel.invokeMethod<bool>('setStringList', {
         'key': key,
@@ -181,6 +206,7 @@ class NativePreferencesService {
   /// Removes an entry from persistent storage.
   Future<bool> remove(String key) async {
     _preferenceCache.remove(key);
+    if (enableTestMode) return true;
     try {
       final bool? success = await _channel.invokeMethod<bool>('remove', {
         'key': key,
@@ -195,6 +221,7 @@ class NativePreferencesService {
   /// Completes with true once the user preferences for the app has been cleared.
   Future<bool> clear() async {
     _preferenceCache.clear();
+    if (enableTestMode) return true;
     try {
       final bool? success = await _channel.invokeMethod<bool>('clear');
       return success ?? true;

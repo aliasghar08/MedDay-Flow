@@ -9,6 +9,7 @@ import 'package:medday_flow/utils/alarm_helper.dart';
 import 'package:medday_flow/utils/catalog.dart';
 import 'package:medday_flow/utils/drawer.dart';
 import 'package:medday_flow/utils/item.dart';
+import 'package:medday_flow/widgets/ad_banner_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:medday_flow/services/custom_state_management.dart';
@@ -43,8 +44,13 @@ class _MyHomeState extends State<MyHome> with SingleTickerProviderStateMixin {
 
       if (!mounted) return;
       if (authProvider.user != null) {
-        context.read<TaskProvider>().fetchTasks(authProvider.user!);
-        context.read<MedicationProvider>().loadMedications(authProvider.user!.uid);
+        final taskProv = context.read<TaskProvider>();
+        final medProv = context.read<MedicationProvider>();
+        await taskProv.fetchTasks(authProvider.user!);
+        if (!mounted) return;
+        await medProv.loadMedications(authProvider.user!.uid);
+        if (!mounted) return;
+        await medProv.refreshPersonalizationInsights(taskProv.tasks);
       }
     });
 
@@ -181,7 +187,7 @@ class _MyHomeState extends State<MyHome> with SingleTickerProviderStateMixin {
   }
 
   // Modern Hero Progress & Summary Banner
-  Widget _buildSummaryHeroCard(TaskProvider taskProvider) {
+  Widget _buildSummaryHeroCard(TaskProvider taskProvider, MedicationProvider medProvider) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final total = taskProvider.totalTasksCount;
     final completed = taskProvider.completedTasksCount;
@@ -189,6 +195,7 @@ class _MyHomeState extends State<MyHome> with SingleTickerProviderStateMixin {
     final overdue = taskProvider.overdueTasksCount;
     final progress = taskProvider.completionRate;
     final formattedDate = DateFormat('EEEE, MMMM d').format(DateTime.now());
+    final topItem = medProvider.topRankedItem;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -273,6 +280,222 @@ class _MyHomeState extends State<MyHome> with SingleTickerProviderStateMixin {
               _buildStatChip("Pending", incomplete, const Color(0xFFF59E0B), Icons.schedule),
               const SizedBox(width: 8),
               _buildStatChip("Overdue", overdue, const Color(0xFFEF4444), Icons.error_outline),
+            ],
+          ),
+          if (topItem != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'UP NEXT',
+                      style: TextStyle(
+                        fontSize: 9.0,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? const Color(0xFF0F172A) : const Color(0xFF2563EB),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${topItem.title} (${topItem.subtitle}) • ${topItem.reason}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Compact, dismissible smart banner suggesting adaptive schedule/cutoff changes
+  Widget _buildSmartInsightBanner(MedicationProvider medProvider) {
+    if (!medProvider.isPersonalizationEnabled) {
+      return const SizedBox.shrink();
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final shift = medProvider.activeReminderShiftSuggestion;
+    final cutoff = medProvider.activeCircadianCutoffSuggestion;
+
+    if (shift == null && cutoff == null) {
+      return const SizedBox.shrink();
+    }
+
+    final isShift = shift != null;
+    final title = isShift ? 'Smart Reminder Shift' : 'Circadian Schedule Calibration';
+    final explanation = isShift ? shift.explanation : cutoff!.explanation;
+    final icon = isShift ? Icons.alarm_on_rounded : Icons.bedtime_rounded;
+    final accentColor = isShift ? const Color(0xFF6366F1) : const Color(0xFF8B5CF6);
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: accentColor.withValues(alpha: 0.35),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: accentColor.withValues(alpha: 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 20, color: accentColor),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : const Color(0xFF0F172A),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: accentColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'AI Insight',
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w600,
+                              color: accentColor,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      explanation,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.grey[300] : const Color(0xFF475569),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () async {
+                  if (isShift) {
+                    await medProvider.dismissReminderShift(shift);
+                  } else {
+                    await medProvider.dismissCircadianCutoff(cutoff!);
+                  }
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Suggestion snoozed for 14 days'),
+                      behavior: SnackBarBehavior.floating,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  visualDensity: VisualDensity.compact,
+                ),
+                child: Text(
+                  'Dismiss',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: () async {
+                  if (isShift) {
+                    await medProvider.applyReminderShift(shift);
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Shifted ${shift.medicationName} reminder to ${shift.formattedSuggestedTime}'),
+                        backgroundColor: const Color(0xFF10B981),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  } else {
+                    await medProvider.applyCircadianCutoff(cutoff!);
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Updated day cutoff to ${cutoff.formattedSuggestedHour}'),
+                        backgroundColor: const Color(0xFF10B981),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.check_rounded, size: 14),
+                label: const Text('Apply', style: TextStyle(fontSize: 12.5)),
+                style: FilledButton.styleFrom(
+                  backgroundColor: accentColor,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
             ],
           ),
         ],
@@ -529,6 +752,9 @@ class _MyHomeState extends State<MyHome> with SingleTickerProviderStateMixin {
       onRefresh: () async {
         if (authProvider.user != null) {
           await taskProvider.fetchTasks(authProvider.user!, showLoading: false);
+          if (!mounted) return;
+          final medProvider = context.read<MedicationProvider>();
+          await medProvider.refreshPersonalizationInsights(taskProvider.tasks);
         }
       },
       child: ListView.builder(
@@ -606,6 +832,7 @@ class _MyHomeState extends State<MyHome> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     final authProvider = context.watch<app_auth.AuthProvider>();
     final taskProvider = context.watch<TaskProvider>();
+    final medProvider = context.watch<MedicationProvider>();
     final user = authProvider.user;
 
     return Scaffold(
@@ -665,7 +892,8 @@ class _MyHomeState extends State<MyHome> with SingleTickerProviderStateMixin {
                     SliverToBoxAdapter(
                       child: Column(
                         children: [
-                          _buildSummaryHeroCard(taskProvider),
+                          _buildSummaryHeroCard(taskProvider, medProvider),
+                          _buildSmartInsightBanner(medProvider),
                           _buildSearchBar(),
                           _buildTabBar(taskProvider),
                         ],
@@ -689,6 +917,7 @@ class _MyHomeState extends State<MyHome> with SingleTickerProviderStateMixin {
               icon: const Icon(Icons.add),
               label: const Text("Add"),
             ),
+      bottomNavigationBar: const AdBannerWidget(),
     );
   }
 }

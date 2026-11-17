@@ -11,6 +11,8 @@ import 'package:medday_flow/utils/catalog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -113,6 +115,83 @@ void main() {
       expect(result.isSuccess, isTrue);
       expect(result.itemsSynced, equals(1));
     });
+
+    test('Retries with exponential backoff on HTTP 429 Too Many Requests', () async {
+      int callCount = 0;
+      final mockClient = MockClient((request) async {
+        callCount++;
+        if (callCount < 3) {
+          return http.Response('{"error":{"code":429,"message":"Rate Limit Exceeded"}}', 429);
+        }
+        return http.Response('{"id":"cal_evt_1"}', 200);
+      });
+
+      final retryService = GoogleCalendarSyncService(
+        httpClient: mockClient,
+        maxRetries: 4,
+        baseBackoffDelay: const Duration(milliseconds: 5),
+      );
+
+      final result = await retryService.pushTasksToCalendar(
+        tasks: [
+          Task(
+            docId: 't_rate',
+            title: 'Rate Limited Task',
+            detail: 'Should succeed on 3rd attempt',
+            date: DateTime(2026, 8, 10, 9, 0),
+            isCompleted: false,
+          ),
+        ],
+        accessToken: 'valid_token',
+      );
+
+      expect(result.isSuccess, isTrue);
+      expect(result.itemsSynced, equals(1));
+      expect(callCount, equals(3));
+    });
+
+    test('Batches multiple tasks into a single multipart/mixed request and refreshes expired OAuth token on 401', () async {
+      int batchCalls = 0;
+      String? lastAuthHeader;
+      final mockClient = MockClient((request) async {
+        batchCalls++;
+        lastAuthHeader = request.headers['Authorization'];
+        if (lastAuthHeader == 'Bearer expired_token') {
+          return http.Response('{"error":{"code":401,"message":"Invalid Credentials"}}', 401);
+        }
+        expect(request.url.toString(), equals('https://www.googleapis.com/batch/calendar/v3'));
+        expect(request.headers['Content-Type'], contains('multipart/mixed'));
+        return http.Response(
+          '--batch_medday_calendar\r\n'
+          'Content-Type: application/http\r\n\r\n'
+          'HTTP/1.1 200 OK\r\n\r\n{}\r\n'
+          '--batch_medday_calendar\r\n'
+          'Content-Type: application/http\r\n\r\n'
+          'HTTP/1.1 201 Created\r\n\r\n{}\r\n'
+          '--batch_medday_calendar--',
+          200,
+        );
+      });
+
+      final batchService = GoogleCalendarSyncService(
+        httpClient: mockClient,
+        baseBackoffDelay: const Duration(milliseconds: 5),
+        onTokenRefresh: () async => 'refreshed_token_xyz',
+      );
+
+      final result = await batchService.pushTasksToCalendar(
+        tasks: [
+          Task(docId: 'b1', title: 'Batch 1', detail: 'D1', date: DateTime(2026, 8, 10, 9, 0), isCompleted: false),
+          Task(docId: 'b2', title: 'Batch 2', detail: 'D2', date: DateTime(2026, 8, 10, 10, 0), isCompleted: false),
+        ],
+        accessToken: 'expired_token',
+      );
+
+      expect(result.isSuccess, isTrue);
+      expect(result.itemsSynced, equals(2));
+      expect(batchCalls, equals(2)); // 1st 401, 2nd 200 with refreshed token
+      expect(lastAuthHeader, equals('Bearer refreshed_token_xyz'));
+    });
   });
 
   group('Google Tasks Sync Engine Tests', () {
@@ -158,6 +237,42 @@ void main() {
       expect(task.detail, equals('Online submission')); // Footer cleaned
       expect(task.isCompleted, isTrue);
       expect(task.completedAt, isNotNull);
+    });
+
+    test('Retries Google Tasks push with exponential backoff on 429 and batches multiple tasks', () async {
+      int attempts = 0;
+      final mockClient = MockClient((request) async {
+        attempts++;
+        if (attempts == 1) {
+          return http.Response('Rate Limit Exceeded', 429);
+        }
+        expect(request.url.toString(), equals('https://www.googleapis.com/batch/tasks/v1'));
+        return http.Response(
+          '--batch_medday_tasks\r\n'
+          'HTTP/1.1 200 OK\r\n\r\n{}\r\n'
+          '--batch_medday_tasks\r\n'
+          'HTTP/1.1 200 OK\r\n\r\n{}\r\n'
+          '--batch_medday_tasks--',
+          200,
+        );
+      });
+
+      final retryTasksService = GoogleTasksSyncService(
+        httpClient: mockClient,
+        baseBackoffDelay: const Duration(milliseconds: 5),
+      );
+
+      final result = await retryTasksService.pushTasksToGoogleTasks(
+        tasks: [
+          Task(docId: 'gt1', title: 'Task 1', detail: 'N1', date: DateTime(2026, 8, 12), isCompleted: false),
+          Task(docId: 'gt2', title: 'Task 2', detail: 'N2', date: DateTime(2026, 8, 12), isCompleted: true),
+        ],
+        accessToken: 'tasks_token_123',
+      );
+
+      expect(result.isSuccess, isTrue);
+      expect(result.itemsSynced, equals(2));
+      expect(attempts, equals(2));
     });
   });
 
@@ -206,7 +321,16 @@ void main() {
       expect(record['status'], equals('taken'));
       expect(record['actualTime'], equals(actualTime.toUtc().toIso8601String()));
       expect(record['logicalDate'], equals(intake.logicalDate.toIso8601String()));
+      expect(record['platform'], equals('Health Connect'));
+      expect(record['healthConnectPackage'], equals('com.google.android.apps.healthdata'));
       expect(record['metadata']['instructions'], equals('Take with water after breakfast'));
+    });
+
+    test('Gracefully skips Health Connect sync on non-Android platforms', () async {
+      final result = await healthService.syncMedications();
+      expect(result.isSuccess, isTrue);
+      expect(result.syncedCount, equals(0));
+      expect(result.skipped, isTrue);
     });
   });
 

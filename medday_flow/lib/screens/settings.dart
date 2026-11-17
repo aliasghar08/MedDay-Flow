@@ -1,10 +1,13 @@
 import 'package:medday_flow/providers/auth_provider.dart' as app_auth;
 import 'package:medday_flow/providers/theme_provider.dart';
+import 'package:medday_flow/providers/medication_provider.dart';
+import 'package:medday_flow/services/personalization_service.dart';
 import 'package:medday_flow/utils/alarm_helper.dart';
 import 'package:medday_flow/utils/native_permission_service.dart';
 import 'package:medday_flow/utils/passkey_auth_service.dart';
 import 'package:medday_flow/screens/sync_integrations_page.dart';
 import 'package:medday_flow/screens/legal_view.dart';
+import 'package:medday_flow/widgets/ad_banner_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:medday_flow/services/custom_state_management.dart';
 import 'package:medday_flow/services/native_preferences_service.dart';
@@ -524,6 +527,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final themeProvider = context.watch<ThemeProvider>();
+    final medProvider = context.watch<MedicationProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -570,6 +574,63 @@ class _SettingsPageState extends State<SettingsPage> {
                       subtitle: Text(themeProvider.themeModeName),
                       trailing: const Icon(Icons.chevron_right, size: 20),
                       onTap: () => _showThemeDialog(context, themeProvider),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    SwitchListTile(
+                      secondary: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.auto_awesome_rounded,
+                          color: Color(0xFF8B5CF6),
+                          size: 20,
+                        ),
+                      ),
+                      title: const Text('Smart Personalization', style: TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: const Text('Adaptive reminder timing & circadian day alignment'),
+                      value: medProvider.isPersonalizationEnabled,
+                      onChanged: (val) async {
+                        await medProvider.setPersonalizationEnabled(val);
+                      },
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.notifications_active_outlined,
+                          color: Color(0xFF10B981),
+                          size: 20,
+                        ),
+                      ),
+                      title: const Text('Adaptive Reminder Mode', style: TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text(medProvider.notificationProfileConfig.description),
+                      trailing: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _getProfileBadgeColor(medProvider.notificationProfileConfig.profile).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: _getProfileBadgeColor(medProvider.notificationProfileConfig.profile).withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: Text(
+                          medProvider.notificationProfileConfig.displayLabel,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: _getProfileBadgeColor(medProvider.notificationProfileConfig.profile),
+                          ),
+                        ),
+                      ),
+                      onTap: () => _showPersonalizationProfileDialog(context, medProvider.notificationProfileConfig),
                     ),
                   ],
                 ),
@@ -872,9 +933,64 @@ class _SettingsPageState extends State<SettingsPage> {
                   ],
                 ),
 
-                const SizedBox(height: 32),
+                const SizedBox(height: 80),
               ],
             ),
+      bottomNavigationBar: const AdBannerWidget(),
+    );
+  }
+
+  Color _getProfileBadgeColor(NotificationProfile profile) {
+    switch (profile) {
+      case NotificationProfile.calm:
+        return const Color(0xFF10B981);
+      case NotificationProfile.standard:
+        return const Color(0xFF3B82F6);
+      case NotificationProfile.supportive:
+        return const Color(0xFFF59E0B);
+    }
+  }
+
+  void _showPersonalizationProfileDialog(
+    BuildContext context,
+    NotificationProfileConfig config,
+  ) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.psychology_outlined, color: Color(0xFF6366F1)),
+            const SizedBox(width: 8),
+            Text('${config.displayLabel} Mode'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(config.description),
+            const SizedBox(height: 12),
+            Text(
+              'Rolling 7-day adherence: ${(config.adherenceRate * 100).toInt()}% (${config.takenDoses}/${config.totalScheduledDoses} doses logged)',
+              style: const TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+            if (config.dropOffTimeWindow != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Identified drop-off window: ${config.dropOffTimeWindow}',
+                style: const TextStyle(fontSize: 13, color: Colors.amber),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
     );
   }
 }

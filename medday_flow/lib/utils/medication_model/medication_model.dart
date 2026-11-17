@@ -9,7 +9,11 @@ class Medication {
   final double dosage;
   final DosageUnit unit;
   final String? description;
-  final String color;
+  final String? formula; // Active chemical ingredient / generic formula
+  final String? medicationClass; // Pharmacological / therapeutic class
+  final String shape; // Physical shape: capsule, round, oval, oblong, liquid, etc.
+  final String color; // Primary color hex
+  final String? secondaryColor; // Secondary color hex (for dual-tone capsules)
   final String icon;
   final DateTime createdAt;
   final bool isActive;
@@ -20,7 +24,11 @@ class Medication {
     required this.dosage,
     required this.unit,
     this.description,
+    this.formula,
+    this.medicationClass,
+    this.shape = 'capsule',
     this.color = '#3498db',
+    this.secondaryColor,
     this.icon = '💊',
     DateTime? createdAt,
     this.isActive = true,
@@ -34,7 +42,11 @@ class Medication {
     double? dosage,
     DosageUnit? unit,
     String? description,
+    String? formula,
+    String? medicationClass,
+    String? shape,
     String? color,
+    String? secondaryColor,
     String? icon,
     DateTime? createdAt,
     bool? isActive,
@@ -45,7 +57,11 @@ class Medication {
       dosage: dosage ?? this.dosage,
       unit: unit ?? this.unit,
       description: description ?? this.description,
+      formula: formula ?? this.formula,
+      medicationClass: medicationClass ?? this.medicationClass,
+      shape: shape ?? this.shape,
       color: color ?? this.color,
+      secondaryColor: secondaryColor ?? this.secondaryColor,
       icon: icon ?? this.icon,
       createdAt: createdAt ?? this.createdAt,
       isActive: isActive ?? this.isActive,
@@ -59,7 +75,11 @@ class Medication {
       'dosage': dosage,
       'unit': unit.name,
       'description': description,
+      'formula': formula,
+      'medicationClass': medicationClass,
+      'shape': shape,
       'color': color,
+      'secondaryColor': secondaryColor,
       'icon': icon,
       'createdAt': Timestamp.fromDate(createdAt.toUtc()),
       'isActive': isActive,
@@ -82,11 +102,15 @@ class Medication {
         (e) => e.name == map['unit'],
         orElse: () => DosageUnit.tablet,
       ),
-      description: map['description'],
-      color: map['color'] ?? '#3498db',
-      icon: map['icon'] ?? '💊',
+      description: map['description'] as String?,
+      formula: map['formula'] as String?,
+      medicationClass: map['medicationClass'] as String?,
+      shape: map['shape'] as String? ?? 'capsule',
+      color: map['color'] as String? ?? '#3498db',
+      secondaryColor: map['secondaryColor'] as String?,
+      icon: map['icon'] as String? ?? '💊',
       createdAt: parseCreatedAt(map['createdAt']),
-      isActive: map['isActive'] ?? true,
+      isActive: map['isActive'] as bool? ?? true,
     );
   }
 

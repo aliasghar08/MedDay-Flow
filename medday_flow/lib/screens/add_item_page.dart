@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:medday_flow/utils/catalog.dart';
+import 'package:medday_flow/widgets/ad_banner_widget.dart';
 import 'package:intl/intl.dart';
 
 enum TaskType { oneTime, daily, weekly, monthly }
@@ -1413,6 +1414,7 @@ class _AddTaskPageState extends State<AddTaskPage> {
           ),
         ),
       ),
+      bottomNavigationBar: const AdBannerWidget(),
     );
   }
 

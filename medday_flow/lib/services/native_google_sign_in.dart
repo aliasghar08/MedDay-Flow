@@ -118,6 +118,58 @@ class NativeGoogleSignIn {
     }
   }
 
+  /// Silently refresh the OAuth / ID token when an existing session expires in the background.
+  ///
+  /// Attempts native silent token refresh first, then falls back to `getCurrentUser()`
+  /// and `FirebaseAuth.instance.currentUser?.getIdToken(true)`.
+  static Future<String?> refreshAccessToken({
+    String? serverClientId,
+    bool forceRefresh = true,
+  }) async {
+    try {
+      final dynamic refreshed = await _channel.invokeMethod('refreshToken', {
+        if (serverClientId != null) 'serverClientId': serverClientId,
+        'forceRefresh': forceRefresh,
+      });
+      if (refreshed is String && refreshed.isNotEmpty) {
+        return refreshed;
+      }
+      if (refreshed is Map) {
+        final account = NativeGoogleSignInAccount.fromMap(refreshed);
+        if (account.idToken != null && account.idToken!.isNotEmpty) {
+          return account.idToken;
+        }
+      }
+    } on MissingPluginException {
+      // Method not implemented or running in unit test / unsupported platform
+    } on PlatformException catch (e) {
+      debugPrint('Native Google refreshToken PlatformException: ${e.code} - ${e.message}');
+    } catch (e) {
+      debugPrint('Native Google refreshToken error: $e');
+    }
+
+    try {
+      final silentAccount = await getCurrentUser();
+      if (silentAccount?.idToken != null && silentAccount!.idToken!.isNotEmpty) {
+        return silentAccount.idToken;
+      }
+    } catch (_) {}
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final token = await user.getIdToken(forceRefresh);
+        if (token != null && token.isNotEmpty) {
+          return token;
+        }
+      }
+    } catch (e) {
+      debugPrint('Firebase token refresh fallback error: $e');
+    }
+
+    return null;
+  }
+
   /// Complete end-to-end Google sign in and Firebase authentication
   static Future<UserCredential?> signInWithFirebase({
     String? serverClientId,

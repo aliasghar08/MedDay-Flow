@@ -105,9 +105,9 @@ dev_dependencies:
 ## 🧱 Project Structure
 
 ```text
-daily_planner/
+medday_flow/
 ├── android/
-│   └── app/src/main/kotlin/com/example/daily_planner/
+│   └── app/src/main/kotlin/com/dartnexuslab/meddayflow/
 │       ├── AlarmForegroundService.kt     # Native foreground service for alarms
 │       ├── AlarmReceiver.kt              # Alarm broadcast trigger & full-screen intent
 │       ├── AlarmScheduler.kt             # Exact alarm scheduling via AlarmManager

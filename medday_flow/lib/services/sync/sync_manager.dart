@@ -98,10 +98,12 @@ class SyncManager {
   Future<SyncResult> syncGoogleCalendar(
     List<Task> tasks, {
     String? accessToken,
+    TokenRefreshCallback? onTokenRefresh,
   }) async {
     final result = await _calendarService.pushTasksToCalendar(
       tasks: tasks,
       accessToken: accessToken,
+      onTokenRefresh: onTokenRefresh,
     );
 
     final config = await loadConfig();
@@ -125,10 +127,12 @@ class SyncManager {
   Future<SyncResult> syncGoogleTasks(
     List<Task> tasks, {
     String? accessToken,
+    TokenRefreshCallback? onTokenRefresh,
   }) async {
     final result = await _tasksService.pushTasksToGoogleTasks(
       tasks: tasks,
       accessToken: accessToken,
+      onTokenRefresh: onTokenRefresh,
     );
 
     final config = await loadConfig();
@@ -148,10 +152,14 @@ class SyncManager {
     return result;
   }
 
-  /// Synchronize Medication Intakes with Health Platform
+  /// Synchronize Medication Intakes with Health Platform (Android Health Connect only)
   Future<SyncResult> syncHealthPlatform(
     List<MedicationIntake> intakes,
   ) async {
+    if (!HealthSyncService.isSupported) {
+      return SyncResult.success(0, 'Health Connect sync skipped on this platform');
+    }
+
     final result = await _healthService.syncMedicationIntakes(
       intakes: intakes,
     );
@@ -183,21 +191,28 @@ class SyncManager {
     required List<Task> tasks,
     required List<MedicationIntake> intakes,
     String? accessToken,
+    TokenRefreshCallback? onTokenRefresh,
   }) async {
     final config = await loadConfig();
     final results = <SyncServiceType, SyncResult>{};
 
     if (config.googleCalendarEnabled) {
-      results[SyncServiceType.googleCalendar] =
-          await syncGoogleCalendar(tasks, accessToken: accessToken);
+      results[SyncServiceType.googleCalendar] = await syncGoogleCalendar(
+        tasks,
+        accessToken: accessToken,
+        onTokenRefresh: onTokenRefresh,
+      );
     }
 
     if (config.googleTasksEnabled) {
-      results[SyncServiceType.googleTasks] =
-          await syncGoogleTasks(tasks, accessToken: accessToken);
+      results[SyncServiceType.googleTasks] = await syncGoogleTasks(
+        tasks,
+        accessToken: accessToken,
+        onTokenRefresh: onTokenRefresh,
+      );
     }
 
-    if (config.healthSyncEnabled) {
+    if (config.healthSyncEnabled && HealthSyncService.isSupported) {
       results[SyncServiceType.healthPlatform] =
           await syncHealthPlatform(intakes);
     }

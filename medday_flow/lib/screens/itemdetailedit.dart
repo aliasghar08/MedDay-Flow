@@ -4,6 +4,7 @@ import 'package:medday_flow/utils/alarm_helper.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:medday_flow/utils/catalog.dart';
+import 'package:medday_flow/widgets/ad_banner_widget.dart';
 import 'package:intl/intl.dart';
 
 // Add this enum (same as in AddTaskPage)
@@ -1583,6 +1584,7 @@ class _EditTaskPageState extends State<EditTaskPage> {
           ),
         ),
       ),
+      bottomNavigationBar: const AdBannerWidget(),
     );
   }
 

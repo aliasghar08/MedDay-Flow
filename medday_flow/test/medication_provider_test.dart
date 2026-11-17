@@ -2,6 +2,7 @@ import 'package:medday_flow/utils/medication_model/frequency_and_dosage.dart';
 import 'package:medday_flow/utils/medication_model/medication_intake.dart';
 import 'package:medday_flow/utils/medication_model/medication_model.dart';
 import 'package:medday_flow/utils/medication_model/medication_schedule_model.dart';
+import 'package:medday_flow/utils/medication_model/medication_classes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -9,6 +10,52 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('Medication & Intake Models', () {
+    test('Medication serialization and deserialization with advanced formula and visual properties', () {
+      final med = Medication(
+        medicationId: 'med_adv_123',
+        name: 'Lipitor',
+        formula: 'Atorvastatin Calcium 20mg',
+        medicationClass: 'Statin',
+        shape: 'capsule',
+        secondaryColor: '#F1F5F9',
+        dosage: 20.0,
+        unit: DosageUnit.mg,
+        color: '#2563EB',
+        icon: '💊',
+        description: 'Take at night for cholesterol',
+        createdAt: DateTime(2026, 1, 1),
+      );
+
+      final map = med.toMap();
+      expect(map['name'], 'Lipitor');
+      expect(map['formula'], 'Atorvastatin Calcium 20mg');
+      expect(map['medicationClass'], 'Statin');
+      expect(map['shape'], 'capsule');
+      expect(map['secondaryColor'], '#F1F5F9');
+      expect(map['dosage'], 20.0);
+      expect(map['unit'], 'mg');
+
+      final fromMap = Medication.fromMap(map, 'med_adv_123');
+      expect(fromMap.medicationId, 'med_adv_123');
+      expect(fromMap.name, 'Lipitor');
+      expect(fromMap.formula, 'Atorvastatin Calcium 20mg');
+      expect(fromMap.medicationClass, 'Statin');
+      expect(fromMap.shape, 'capsule');
+      expect(fromMap.secondaryColor, '#F1F5F9');
+      expect(fromMap.dosage, 20.0);
+      expect(fromMap.unit, DosageUnit.mg);
+    });
+
+    test('MedicationClassCatalog provides comprehensive classifications', () {
+      expect(MedicationClassCatalog.classes.length, greaterThanOrEqualTo(15));
+      final statin = MedicationClassCatalog.findByName('Statin');
+      expect(statin, isNotNull);
+      expect(statin!.category, 'Cardiovascular');
+
+      final analgesic = MedicationClassCatalog.findByName('Analgesic');
+      expect(analgesic, isNotNull);
+      expect(analgesic!.category, 'Pain & Fever');
+    });
     test('Medication serialization and deserialization', () {
       final med = Medication(
         medicationId: 'med_123',

@@ -1,4 +1,4 @@
-package com.example.daily_planner
+package com.dartnexuslab.meddayflow
 
 import android.Manifest
 import android.app.AlarmManager
@@ -741,7 +741,7 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private fun handleHealthMethodCall(call: MethodCall, result: MethodChannel.Result) {
-        val healthPrefs = getSharedPreferences("daily_planner_google_fit_records", Context.MODE_PRIVATE)
+        val healthPrefs = getSharedPreferences("daily_planner_health_connect_records", Context.MODE_PRIVATE)
         when (call.method) {
             "checkAvailability" -> {
                 result.success(true)
@@ -753,6 +753,47 @@ class MainActivity : FlutterFragmentActivity() {
             "checkPermissions" -> {
                 val granted = healthPrefs.getBoolean("health_permission_granted", false)
                 result.success(granted)
+            }
+            "saveMedicationRecordsBatch" -> {
+                val args = call.arguments as? Map<String, Any>
+                val records = args?.get("records") as? List<Map<String, Any>>
+                if (records != null) {
+                    val existingJson = healthPrefs.getString("records", "[]") ?: "[]"
+                    try {
+                        val jsonArray = JSONArray(existingJson)
+                        val utcFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+                            timeZone = TimeZone.getTimeZone("UTC")
+                        }
+                        val nowStr = utcFormat.format(java.util.Date())
+
+                        for (recordMap in records) {
+                            val recordId = recordMap["recordId"] as? String ?: UUID.randomUUID().toString()
+                            val newObj = JSONObject(recordMap)
+                            newObj.put("syncedAt", nowStr)
+                            newObj.put("platform", "Health Connect")
+
+                            var replaced = false
+                            for (i in 0 until jsonArray.length()) {
+                                val item = jsonArray.getJSONObject(i)
+                                if (item.optString("recordId") == recordId) {
+                                    jsonArray.put(i, newObj)
+                                    replaced = true
+                                    break
+                                }
+                            }
+                            if (!replaced) {
+                                jsonArray.put(newObj)
+                            }
+                        }
+                        healthPrefs.edit().putString("records", jsonArray.toString()).apply()
+                        result.success(true)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error batch saving Health Connect records: ${e.message}", e)
+                        result.error("BATCH_SAVE_FAILED", e.message, null)
+                    }
+                } else {
+                    result.error("INVALID_ARGS", "records list is required", null)
+                }
             }
             "saveMedicationRecord" -> {
                 val args = call.arguments as? Map<String, Any>
@@ -766,7 +807,7 @@ class MainActivity : FlutterFragmentActivity() {
                             timeZone = TimeZone.getTimeZone("UTC")
                         }
                         newObj.put("syncedAt", utcFormat.format(java.util.Date()))
-                        newObj.put("platform", "Google Fit")
+                        newObj.put("platform", "Health Connect")
 
                         var replaced = false
                         for (i in 0 until jsonArray.length()) {

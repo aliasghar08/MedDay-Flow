@@ -387,8 +387,18 @@ class _LoginPageState extends State<LoginPage> {
       );
     } catch (e) {
       if (mounted) {
+        String errorMessage = 'Apple sign-in failed.';
+        if (e is FirebaseAuthException) {
+          errorMessage = 'Apple sign-in error [${e.code}]: ${e.message ?? 'Authentication rejected by Firebase.'}';
+        } else if (e is SignInWithAppleAuthorizationException) {
+          errorMessage = 'Apple authorization failed: ${e.message}';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Apple sign-in failed.')),
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 4),
+          ),
         );
       }
       debugPrint('Apple sign-in error: $e');

@@ -1,4 +1,5 @@
 import 'package:medday_flow/utils/passkey_auth_service.dart';
+import 'package:medday_flow/widgets/ad_banner_widget.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -185,6 +186,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
           ),
         ),
       ),
+      bottomNavigationBar: const AdBannerWidget(),
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'package:medday_flow/widgets/ad_banner_widget.dart';
 import 'package:flutter/material.dart';
 
 /// Reusable legal and medical disclaimer viewer for MedDay Flow.
@@ -39,14 +40,19 @@ We respect your privacy. This Privacy Policy details how MedDay Flow collects, u
 • On Android, if you opt in, taken doses can be synced to Google Fit / Health Connect.
 • MedDay Flow does NOT use health data for advertising, marketing, profiling, or data mining, and does NOT sell, rent, or transfer it to third parties.
 
-4. Data Security & Storage
+4. Advertising & Google AdMob (Guideline 5.1.2)
+• MedDay Flow displays non-intrusive banner advertisements served by Google AdMob on select secondary screens to support app maintenance and development.
+• On iOS, you may receive an Apple App Tracking Transparency (ATT) prompt allowing you to choose whether advertisements can be personalized.
+• We NEVER sell, share, or transfer your medication logs, clinical dosages, medical formulas, or circadian schedules to Google AdMob or any third-party advertisers. All health and medication data remains strictly isolated to your private account.
+
+5. Data Security & Storage
 • All data transmission occurs over encrypted HTTPS/TLS channels.
 • Cloud storage is backed by Firebase Security Rules enforcing per-user data isolation.
 
-5. User Rights & Account Deletion (Guideline 5.1.1)
+6. User Rights & Account Deletion (Guideline 5.1.1)
 • You have the right to access, edit, or permanently delete your account and all associated data at any time directly in Settings > Danger Zone > Delete Account.
 
-6. Contact
+7. Contact
 For questions regarding this policy, contact us at:
 https://github.com/aliasghar08
 ''';
@@ -242,6 +248,7 @@ class LegalInfoPage extends StatelessWidget {
             ),
           ],
         ),
+        bottomNavigationBar: const AdBannerWidget(),
       ),
     );
   }

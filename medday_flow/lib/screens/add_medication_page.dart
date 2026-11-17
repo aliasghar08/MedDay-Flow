@@ -1,8 +1,14 @@
+import 'dart:async';
 import 'package:medday_flow/providers/auth_provider.dart' as app_auth;
 import 'package:medday_flow/providers/medication_provider.dart';
+import 'package:medday_flow/services/medication_ml_classifier_service.dart';
 import 'package:medday_flow/utils/medication_model/frequency_and_dosage.dart';
 import 'package:medday_flow/utils/medication_model/medication_model.dart';
 import 'package:medday_flow/utils/medication_model/medication_schedule_model.dart';
+import 'package:medday_flow/utils/medication_model/medication_classes.dart';
+import 'package:medday_flow/widgets/medication_pill_graphic.dart';
+import 'package:medday_flow/widgets/ad_banner_widget.dart';
+import 'package:medday_flow/widgets/searchable_medication_class_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:medday_flow/services/custom_state_management.dart';
 
@@ -23,11 +29,16 @@ class AddMedicationPage extends StatefulWidget {
 class _AddMedicationPageState extends State<AddMedicationPage> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
+  final _formulaController = TextEditingController();
   final _dosageController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _instructionsController = TextEditingController();
 
-  String _selectedColor = '#3498db';
+  String _selectedColor = '#2563EB';
+  String? _selectedSecondaryColor;
+  bool _isDualTone = false;
+  MedicationShape _selectedShape = MedicationShape.capsule;
+  String? _selectedClass;
   String _selectedIcon = '💊';
   DosageUnit _selectedUnit = DosageUnit.mg;
   double _dosage = 0.0;
@@ -42,30 +53,81 @@ class _AddMedicationPageState extends State<AddMedicationPage> {
   int _reminderMinutesBefore = 15;
   bool _isSaving = false;
 
-  // Color options for medication
-  final List<Map<String, dynamic>> _colorOptions = [
-    {'color': '#3498db', 'name': 'Blue'},
-    {'color': '#e74c3c', 'name': 'Red'},
-    {'color': '#2ecc71', 'name': 'Green'},
-    {'color': '#f39c12', 'name': 'Orange'},
-    {'color': '#9b59b6', 'name': 'Purple'},
-    {'color': '#1abc9c', 'name': 'Teal'},
+  // ML Classification & Prediction variables
+  Timer? _formulaDebounceTimer;
+  bool _userManuallyOverrodeClass = false;
+  MedicationMLPrediction? _lastMlPrediction;
+
+  // Form factor / tablet shape options
+  final List<Map<String, dynamic>> _shapeOptions = [
+    {
+      'shape': MedicationShape.capsule,
+      'name': 'Capsule',
+      'icon': Icons.medication_rounded,
+    },
+    {
+      'shape': MedicationShape.round,
+      'name': 'Round',
+      'icon': Icons.circle_outlined,
+    },
+    {
+      'shape': MedicationShape.oval,
+      'name': 'Oval',
+      'icon': Icons.egg_outlined,
+    },
+    {
+      'shape': MedicationShape.oblong,
+      'name': 'Caplet',
+      'icon': Icons.crop_portrait_rounded,
+    },
+    {
+      'shape': MedicationShape.liquid,
+      'name': 'Syrup',
+      'icon': Icons.water_drop_outlined,
+    },
+    {
+      'shape': MedicationShape.drops,
+      'name': 'Drops',
+      'icon': Icons.opacity_rounded,
+    },
+    {
+      'shape': MedicationShape.inhaler,
+      'name': 'Inhaler',
+      'icon': Icons.air_rounded,
+    },
+    {
+      'shape': MedicationShape.injection,
+      'name': 'Injection',
+      'icon': Icons.vaccines_outlined,
+    },
+    {
+      'shape': MedicationShape.patch,
+      'name': 'Patch',
+      'icon': Icons.crop_square_rounded,
+    },
+    {
+      'shape': MedicationShape.topical,
+      'name': 'Topical',
+      'icon': Icons.sanitizer_outlined,
+    },
   ];
 
-  // Icon options for medication
-  final List<String> _iconOptions = [
-    '💊',
-    '💉',
-    '🩺',
-    '❤️',
-    '🧠',
-    '🦴',
-    '👁️',
-    '👂',
-    '🫀',
-    '🫁',
-    '🧴',
-    '💧',
+  // Color options for medication
+  final List<Map<String, dynamic>> _colorOptions = [
+    {'color': '#2563EB', 'name': 'Sky Blue'},
+    {'color': '#1D4ED8', 'name': 'Royal Navy'},
+    {'color': '#EF4444', 'name': 'Coral Red'},
+    {'color': '#B91C1C', 'name': 'Ruby Red'},
+    {'color': '#10B981', 'name': 'Emerald'},
+    {'color': '#047857', 'name': 'Forest Green'},
+    {'color': '#F59E0B', 'name': 'Amber'},
+    {'color': '#EAB308', 'name': 'Sun Yellow'},
+    {'color': '#8B5CF6', 'name': 'Lavender'},
+    {'color': '#6D28D9', 'name': 'Purple'},
+    {'color': '#06B6D4', 'name': 'Teal Cyan'},
+    {'color': '#EC4899', 'name': 'Rose Pink'},
+    {'color': '#F1F5F9', 'name': 'Pill White'},
+    {'color': '#64748B', 'name': 'Slate Grey'},
   ];
 
   // Day options
@@ -85,12 +147,19 @@ class _AddMedicationPageState extends State<AddMedicationPage> {
     // Pre-fill form if editing existing medication
     if (widget.existingMedication != null) {
       _nameController.text = widget.existingMedication!.name;
+      _formulaController.text = widget.existingMedication!.formula ?? '';
       _dosageController.text = widget.existingMedication!.dosage.toString();
       _descriptionController.text = widget.existingMedication!.description ?? '';
       _selectedColor = widget.existingMedication!.color;
+      _selectedSecondaryColor = widget.existingMedication!.secondaryColor;
+      _isDualTone = widget.existingMedication!.secondaryColor != null;
+      _selectedShape = MedicationShape.fromString(widget.existingMedication!.shape);
+      _selectedClass = widget.existingMedication!.medicationClass;
       _selectedIcon = widget.existingMedication!.icon;
       _selectedUnit = widget.existingMedication!.unit;
       _dosage = widget.existingMedication!.dosage;
+      _userManuallyOverrodeClass = widget.existingMedication!.medicationClass != null &&
+          widget.existingMedication!.medicationClass!.trim().isNotEmpty;
     }
 
     // Pre-fill schedule if editing existing schedule
@@ -109,9 +178,44 @@ class _AddMedicationPageState extends State<AddMedicationPage> {
     }
   }
 
+  void _onFormulaChanged(String text) {
+    setState(() {}); // refresh live preview
+    _formulaDebounceTimer?.cancel();
+    if (text.trim().isEmpty) {
+      setState(() {
+        _lastMlPrediction = null;
+      });
+      return;
+    }
+
+    _formulaDebounceTimer = Timer(const Duration(milliseconds: 250), () {
+      if (!mounted) return;
+      final prediction = MedicationMLClassifierService.predict(text);
+      setState(() {
+        _lastMlPrediction = prediction;
+        if (prediction.hasPrediction && !_userManuallyOverrodeClass) {
+          _selectedClass = prediction.predictedClass!.name;
+          if (prediction.extractedDosage != null &&
+              (_dosage == 0.0 || _dosageController.text.isEmpty || _dosageController.text == '0.0')) {
+            _dosage = prediction.extractedDosage!;
+            _dosageController.text = prediction.extractedDosage!.toString();
+          }
+          if (prediction.suggestedUnit != null) {
+            _selectedUnit = prediction.suggestedUnit!;
+          }
+          if (prediction.suggestedShape != null) {
+            _selectedShape = prediction.suggestedShape!;
+          }
+        }
+      });
+    });
+  }
+
   @override
   void dispose() {
+    _formulaDebounceTimer?.cancel();
     _nameController.dispose();
+    _formulaController.dispose();
     _dosageController.dispose();
     _descriptionController.dispose();
     _instructionsController.dispose();
@@ -167,6 +271,14 @@ class _AddMedicationPageState extends State<AddMedicationPage> {
       final medication = Medication(
         medicationId: medicationId,
         name: _nameController.text.trim(),
+        formula: _formulaController.text.trim().isEmpty
+            ? null
+            : _formulaController.text.trim(),
+        medicationClass: _selectedClass,
+        shape: _selectedShape.name,
+        secondaryColor: _isDualTone && _selectedSecondaryColor != null
+            ? _selectedSecondaryColor
+            : null,
         dosage: _dosage,
         unit: _selectedUnit,
         description: _descriptionController.text.trim().isEmpty
@@ -225,103 +337,6 @@ class _AddMedicationPageState extends State<AddMedicationPage> {
         });
       }
     }
-  }
-
-  void _showColorPicker() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Choose Color'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: GridView.builder(
-            shrinkWrap: true,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-            ),
-            itemCount: _colorOptions.length,
-            itemBuilder: (context, index) {
-              final colorOption = _colorOptions[index];
-              return GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _selectedColor = colorOption['color'];
-                  });
-                  Navigator.pop(context);
-                },
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: _parseColor(colorOption['color']),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: _selectedColor == colorOption['color']
-                          ? Colors.black
-                          : Colors.transparent,
-                      width: 3,
-                    ),
-                  ),
-                  child: Center(
-                    child: Text(
-                      colorOption['name'],
-                      style: TextStyle(
-                        color: _getTextColor(_parseColor(colorOption['color'])),
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showIconPicker() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Choose Icon'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: GridView.builder(
-            shrinkWrap: true,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-            ),
-            itemCount: _iconOptions.length,
-            itemBuilder: (context, index) {
-              final icon = _iconOptions[index];
-              return GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _selectedIcon = icon;
-                  });
-                  Navigator.pop(context);
-                },
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: _selectedIcon == icon
-                        ? Colors.blue.withValues(alpha: 0.2)
-                        : Colors.grey.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Center(
-                    child: Text(icon, style: const TextStyle(fontSize: 24)),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-    );
   }
 
   Future<void> _addTime() async {
@@ -693,6 +708,8 @@ class _AddMedicationPageState extends State<AddMedicationPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -717,81 +734,322 @@ class _AddMedicationPageState extends State<AddMedicationPage> {
           key: _formKey,
           child: ListView(
             children: [
-              // Appearance Card
+              // --------------------------------------------------------
+              // Visual Studio & Form Factor Card (Shape, Color, 3D Pill)
+              // --------------------------------------------------------
               Card(
+                elevation: 1.5,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(18.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Appearance',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
                       Row(
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Icon'),
-                              const SizedBox(height: 8),
-                              GestureDetector(
-                                onTap: _showIconPicker,
-                                child: Container(
-                                  width: 60,
-                                  height: 60,
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      _selectedIcon,
-                                      style: const TextStyle(fontSize: 24),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(Icons.palette_rounded, color: Theme.of(context).primaryColor, size: 20),
                           ),
-                          const SizedBox(width: 20),
-                          Expanded(
+                          const SizedBox(width: 10),
+                          const Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('Color'),
-                                const SizedBox(height: 8),
-                                GestureDetector(
-                                  onTap: _showColorPicker,
-                                  child: Container(
-                                    height: 60,
-                                    decoration: BoxDecoration(
-                                      color: _parseColor(_selectedColor),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(color: Colors.grey),
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        'Selected Color',
-                                        style: TextStyle(
-                                          color: _getTextColor(
-                                            _parseColor(_selectedColor),
-                                          ),
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
+                                Text(
+                                  'Medication Visual Studio',
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                ),
+                                Text(
+                                  'Customize realistic 3D appearance & colors',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey),
                                 ),
                               ],
                             ),
                           ),
                         ],
                       ),
+                      const SizedBox(height: 18),
+
+                      // Interactive Live Preview Box
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: isDark
+                                ? [const Color(0xFF262626), const Color(0xFF1A1A1A)]
+                                : [Colors.blue.shade50.withValues(alpha: 0.5), Colors.indigo.shade50.withValues(alpha: 0.5)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isDark ? Colors.grey.shade800 : Colors.blue.shade100,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            // Live 3D pill graphic
+                            MedicationPillGraphic(
+                              shape: _selectedShape,
+                              primaryColor: _parseColor(_selectedColor),
+                              secondaryColor: _isDualTone && _selectedSecondaryColor != null
+                                  ? _parseColor(_selectedSecondaryColor!)
+                                  : null,
+                              size: 58,
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _nameController.text.trim().isEmpty
+                                        ? 'Medicine Name'
+                                        : _nameController.text.trim(),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  if (_formulaController.text.trim().isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      _formulaController.text.trim(),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontStyle: FontStyle.italic,
+                                        color: isDark ? Colors.cyan.shade200 : const Color(0xFF0E7490),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    '${_selectedShape.name.toUpperCase()} • ${_dosageController.text.isNotEmpty ? _dosageController.text : "0"} ${_selectedUnit.name}${_isDualTone ? " (Dual-Tone)" : ""}',
+                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                  ),
+                                  if (_selectedClass != null && _selectedClass!.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.purple.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        _selectedClass!,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.purple,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Shape Selection Carousel / Horizontal Chips
+                      const Text(
+                        'Pill / Medicine Shape',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 72,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _shapeOptions.length,
+                          itemBuilder: (context, idx) {
+                            final item = _shapeOptions[idx];
+                            final shape = item['shape'] as MedicationShape;
+                            final isSel = _selectedShape == shape;
+                            return GestureDetector(
+                              onTap: () => setState(() => _selectedShape = shape),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 180),
+                                width: 78,
+                                margin: const EdgeInsets.only(right: 8),
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: isSel
+                                      ? (isDark ? Colors.blue.shade900.withValues(alpha: 0.5) : Colors.blue.shade50)
+                                      : (isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade100),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: isSel ? Colors.blueAccent : Colors.transparent,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      item['icon'] as IconData,
+                                      size: 24,
+                                      color: isSel ? Colors.blueAccent : Colors.grey,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      item['name'] as String,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+                                        color: isSel ? Colors.blueAccent : (isDark ? Colors.grey.shade300 : Colors.black87),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+
+                      // Primary Color Palette
+                      const Text(
+                        'Primary Color',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 46,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _colorOptions.length,
+                          itemBuilder: (context, idx) {
+                            final opt = _colorOptions[idx];
+                            final hex = opt['color'] as String;
+                            final c = _parseColor(hex);
+                            final isSel = _selectedColor == hex;
+                            return GestureDetector(
+                              onTap: () => setState(() => _selectedColor = hex),
+                              child: Container(
+                                width: 40,
+                                height: 40,
+                                margin: const EdgeInsets.only(right: 10),
+                                decoration: BoxDecoration(
+                                  color: c,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: isSel ? Colors.black : Colors.grey.shade300,
+                                    width: isSel ? 3 : 1,
+                                  ),
+                                  boxShadow: [
+                                    if (isSel)
+                                      BoxShadow(
+                                        color: c.withValues(alpha: 0.5),
+                                        blurRadius: 8,
+                                        spreadRadius: 1,
+                                      ),
+                                  ],
+                                ),
+                                child: isSel
+                                    ? Icon(
+                                        Icons.check,
+                                        size: 20,
+                                        color: _getTextColor(c),
+                                      )
+                                    : null,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Dual-Tone Toggle & Secondary Color
+                      SwitchListTile.adaptive(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text(
+                          'Two-Tone / Dual Color Pill',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: const Text(
+                          'Enable split-tone color (ideal for capsules & coated caplets)',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        value: _isDualTone,
+                        onChanged: (val) {
+                          setState(() {
+                            _isDualTone = val;
+                            if (val && _selectedSecondaryColor == null) {
+                              _selectedSecondaryColor = '#F1F5F9'; // default white
+                            }
+                          });
+                        },
+                      ),
+                      if (_isDualTone) ...[
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Secondary Color (Second Half)',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 46,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _colorOptions.length,
+                            itemBuilder: (context, idx) {
+                              final opt = _colorOptions[idx];
+                              final hex = opt['color'] as String;
+                              final c = _parseColor(hex);
+                              final isSel = _selectedSecondaryColor == hex;
+                              return GestureDetector(
+                                onTap: () => setState(() => _selectedSecondaryColor = hex),
+                                child: Container(
+                                  width: 40,
+                                  height: 40,
+                                  margin: const EdgeInsets.only(right: 10),
+                                  decoration: BoxDecoration(
+                                    color: c,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: isSel ? Colors.black : Colors.grey.shade300,
+                                      width: isSel ? 3 : 1,
+                                    ),
+                                    boxShadow: [
+                                      if (isSel)
+                                        BoxShadow(
+                                          color: c.withValues(alpha: 0.5),
+                                          blurRadius: 8,
+                                          spreadRadius: 1,
+                                        ),
+                                    ],
+                                  ),
+                                  child: isSel
+                                      ? Icon(
+                                          Icons.check,
+                                          size: 20,
+                                          color: _getTextColor(c),
+                                        )
+                                      : null,
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -815,8 +1073,10 @@ class _AddMedicationPageState extends State<AddMedicationPage> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _nameController,
+                        onChanged: (_) => setState(() {}),
                         decoration: const InputDecoration(
                           labelText: 'Medication Name*',
+                          hintText: 'e.g., Lipitor, Amoxicillin',
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.medication),
                         ),
@@ -825,6 +1085,176 @@ class _AddMedicationPageState extends State<AddMedicationPage> {
                             return 'Please enter medication name';
                           }
                           return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Formula / Active Ingredient Field
+                      TextFormField(
+                        controller: _formulaController,
+                        onChanged: _onFormulaChanged,
+                        decoration: const InputDecoration(
+                          labelText: 'Formula / Active Ingredient (Optional)',
+                          hintText: 'e.g., Atorvastatin Calcium 20mg, Amoxicillin Trihydrate',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.biotech_outlined),
+                        ),
+                      ),
+
+                      // ML Auto-Classification Feedback Badge
+                      if (_lastMlPrediction != null && _lastMlPrediction!.hasPrediction) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF1E293B) : const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: const Color(0xFF3B82F6).withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.auto_awesome, color: Color(0xFF2563EB), size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        const Text(
+                                          'ML Classification: ',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                            color: Color(0xFF1D4ED8),
+                                          ),
+                                        ),
+                                        Flexible(
+                                          child: Text(
+                                            _lastMlPrediction!.predictedClass!.name,
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    Text(
+                                      '${(_lastMlPrediction!.confidence * 100).toInt()}% confidence • ${_lastMlPrediction!.matchedFeature}',
+                                      style: TextStyle(fontSize: 11, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (_userManuallyOverrodeClass && _selectedClass != _lastMlPrediction!.predictedClass!.name)
+                                TextButton(
+                                  style: TextButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    minimumSize: Size.zero,
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _userManuallyOverrodeClass = false;
+                                      _selectedClass = _lastMlPrediction!.predictedClass!.name;
+                                    });
+                                  },
+                                  child: const Text('Apply ML', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+
+                      // Searchable Medication Class Selector
+                      Builder(
+                        builder: (ctx) {
+                          final classInfo = MedicationClassCatalog.findByName(_selectedClass);
+                          final hasSelection = _selectedClass != null && _selectedClass!.isNotEmpty;
+                          final theme = Theme.of(ctx);
+                          final isDark = theme.brightness == Brightness.dark;
+
+                          return InkWell(
+                            onTap: () async {
+                              final picked = await SearchableMedicationClassSheet.show(
+                                context,
+                                currentSelection: _selectedClass,
+                              );
+                              if (picked != null) {
+                                setState(() {
+                                  _selectedClass = picked.isEmpty ? null : picked;
+                                  _userManuallyOverrodeClass = true; // User explicitly selected or changed class!
+                                });
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: InputDecorator(
+                              decoration: InputDecoration(
+                                labelText: 'Medication Class / Category',
+                                border: const OutlineInputBorder(),
+                                prefixIcon: const Icon(Icons.category_outlined),
+                                suffixIcon: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (hasSelection)
+                                      IconButton(
+                                        icon: const Icon(Icons.clear, size: 18),
+                                        tooltip: 'Clear class',
+                                        onPressed: () {
+                                          setState(() {
+                                            _selectedClass = null;
+                                            _userManuallyOverrodeClass = true; // User manually cleared class
+                                          });
+                                        },
+                                      ),
+                                    const Icon(Icons.search_rounded, size: 20),
+                                    const SizedBox(width: 8),
+                                  ],
+                                ),
+                              ),
+                              child: hasSelection
+                                  ? Row(
+                                      children: [
+                                        if (classInfo != null) ...[
+                                          Text(classInfo.icon, style: const TextStyle(fontSize: 16)),
+                                          const SizedBox(width: 8),
+                                        ],
+                                        Expanded(
+                                          child: Text(
+                                            _selectedClass!,
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        if (classInfo != null)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: MedicationClassCatalog.parseColor(classInfo.colorHex).withValues(alpha: 0.15),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              classInfo.category,
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                color: MedicationClassCatalog.parseColor(classInfo.colorHex),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    )
+                                  : Text(
+                                      'Tap to search & select class (50+ available)...',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                                      ),
+                                    ),
+                            ),
+                          );
                         },
                       ),
                       const SizedBox(height: 16),
@@ -958,6 +1388,7 @@ class _AddMedicationPageState extends State<AddMedicationPage> {
           ),
         ),
       ),
+      bottomNavigationBar: const AdBannerWidget(),
     );
   }
 }

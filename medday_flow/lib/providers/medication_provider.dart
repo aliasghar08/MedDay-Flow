@@ -6,6 +6,9 @@ import 'package:medday_flow/utils/medication_model/medication_intake.dart';
 import 'package:medday_flow/utils/medication_model/medication_model.dart';
 import 'package:medday_flow/utils/medication_model/medication_schedule_model.dart';
 import 'package:medday_flow/services/sync/sync_manager.dart';
+import 'package:medday_flow/services/personalization_service.dart';
+import 'package:medday_flow/services/analytics_service.dart';
+import 'package:medday_flow/utils/catalog.dart';
 import 'package:flutter/material.dart';
 
 class MedicationProvider extends ChangeNotifier {
@@ -34,6 +37,21 @@ class MedicationProvider extends ChangeNotifier {
   final Map<String, MedicationIntake> _rawRecordedIntakes = {};
   bool _hasBackfilled = false;
 
+  // Personalization state
+  bool _isPersonalizationEnabled = true;
+  ReminderShiftSuggestion? _activeReminderShiftSuggestion;
+  CircadianCutoffSuggestion? _activeCircadianCutoffSuggestion;
+  NotificationProfileConfig _notificationProfileConfig = const NotificationProfileConfig(
+    profile: NotificationProfile.standard,
+    adherenceRate: 1.0,
+    totalScheduledDoses: 0,
+    takenDoses: 0,
+    preDoseLeadMinutes: 0,
+    followUpCheckInEnabled: false,
+  );
+  List<RankedUpNextItem> _rankedUpNextItems = [];
+  List<Task> _cachedTasksForPersonalization = [];
+
   // Getters
   List<Medication> get medications => List.unmodifiable(_medications);
   List<MedicationSchedule> get schedules => List.unmodifiable(_schedules);
@@ -43,6 +61,15 @@ class MedicationProvider extends ChangeNotifier {
   DateTime get selectedDate => _selectedDate;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+
+  // Personalization Getters
+  bool get isPersonalizationEnabled => _isPersonalizationEnabled;
+  ReminderShiftSuggestion? get activeReminderShiftSuggestion => _activeReminderShiftSuggestion;
+  CircadianCutoffSuggestion? get activeCircadianCutoffSuggestion => _activeCircadianCutoffSuggestion;
+  NotificationProfileConfig get notificationProfileConfig => _notificationProfileConfig;
+  List<RankedUpNextItem> get rankedUpNextItems => List.unmodifiable(_rankedUpNextItems);
+  RankedUpNextItem? get topRankedItem => _rankedUpNextItems.isNotEmpty ? _rankedUpNextItems.first : null;
+  List<MedicationIntake> get historicalIntakes => List.unmodifiable(_rawRecordedIntakes.values);
 
   /// Current circadian logical date (runs 4 AM to 3:59 AM next day)
   DateTime get currentLogicalDate =>
@@ -70,17 +97,44 @@ class MedicationProvider extends ChangeNotifier {
   /// Returns the next upcoming intake scheduled in the future for today or tomorrow
   MedicationIntake? get nextUpcomingIntake {
     final now = DateTime.now();
-    final upcoming =
-        _selectedDateIntakes
-            .where(
-              (i) =>
-                  i.status == IntakeStatus.pending &&
-                  i.scheduledTime.isAfter(now),
-            )
-            .toList();
-    if (upcoming.isNotEmpty) {
-      upcoming.sort((a, b) => a.scheduledTime.compareTo(b.scheduledTime));
-      return upcoming.first;
+
+    // 1. Check selected date intakes if viewed date is today
+    if (isSelectedDateToday) {
+      final upcoming = _selectedDateIntakes
+          .where(
+            (i) =>
+                i.status == IntakeStatus.pending &&
+                i.scheduledTime.isAfter(now),
+          )
+          .toList();
+      if (upcoming.isNotEmpty) {
+        upcoming.sort((a, b) => a.scheduledTime.compareTo(b.scheduledTime));
+        return upcoming.first;
+      }
+    }
+
+    // 2. Scan active schedules for logical today and tomorrow to ensure upcoming card is always accurate
+    final logicalToday = currentLogicalDate;
+    final logicalTomorrow = logicalToday.add(const Duration(days: 1));
+
+    final List<MedicationIntake> allCandidates = [];
+    for (final schedule in _schedules) {
+      if (!schedule.medication.isActive) continue;
+      allCandidates.addAll(schedule.generateIntakesForDate(logicalToday));
+      allCandidates.addAll(schedule.generateIntakesForDate(logicalTomorrow));
+    }
+
+    final List<MedicationIntake> upcomingList = [];
+    for (final candidate in allCandidates) {
+      final actual = _rawRecordedIntakes[candidate.intakeId] ?? candidate;
+      if (actual.status == IntakeStatus.pending && actual.scheduledTime.isAfter(now)) {
+        upcomingList.add(actual);
+      }
+    }
+
+    if (upcomingList.isNotEmpty) {
+      upcomingList.sort((a, b) => a.scheduledTime.compareTo(b.scheduledTime));
+      return upcomingList.first;
     }
     return null;
   }
@@ -279,6 +333,7 @@ class MedicationProvider extends ChangeNotifier {
       cutoff,
       0,
     );
+    final startOfHistoryWindow = startOfLogicalWindow.subtract(const Duration(days: 15));
 
     for (var sub in _intakesSubscriptions.values) {
       sub.cancel();
@@ -294,7 +349,7 @@ class MedicationProvider extends ChangeNotifier {
           .doc(medication.medicationId)
           .collection('intakes')
           .where('scheduledTime',
-              isGreaterThanOrEqualTo: Timestamp.fromDate(startOfLogicalWindow))
+              isGreaterThanOrEqualTo: Timestamp.fromDate(startOfHistoryWindow))
           .where('scheduledTime',
               isLessThan: Timestamp.fromDate(endOfLogicalWindow))
           .snapshots()
@@ -316,8 +371,8 @@ class MedicationProvider extends ChangeNotifier {
                 }
                 final intake = MedicationIntake.fromMap(data, doc.id, sched);
                 
-                // Local filtering: only include intakes inside the current logical day window
-                if (intake.scheduledTime.isBefore(startOfLogicalWindow) || 
+                // Local filtering: retain intakes within the active history window
+                if (intake.scheduledTime.isBefore(startOfHistoryWindow) || 
                     !intake.scheduledTime.isBefore(endOfLogicalWindow)) {
                   continue;
                 }
@@ -353,6 +408,7 @@ class MedicationProvider extends ChangeNotifier {
     // 1. Generate scheduled intakes for this logical date
     final List<MedicationIntake> generatedIntakes = [];
     for (final schedule in _schedules) {
+      if (!schedule.medication.isActive) continue;
       generatedIntakes.addAll(schedule.generateIntakesForDate(logicalDate));
     }
 
@@ -400,6 +456,7 @@ class MedicationProvider extends ChangeNotifier {
     resolvedIntakes.sort((a, b) => a.scheduledTime.compareTo(b.scheduledTime));
     _selectedDateIntakes = resolvedIntakes;
     notifyListeners();
+    refreshPersonalizationInsights();
   }
 
   Future<void> _autoMarkMissedInFirestore(MedicationIntake intake) async {
@@ -562,11 +619,8 @@ class MedicationProvider extends ChangeNotifier {
         _schedules.insert(0, schedule);
       }
 
-      // 4. Refresh intakes for selected date via stream listener
-      _setupIntakeListeners(_selectedDate);
-
-      // 5. Schedule notification alarms
-      _scheduleMedicationNotifications();
+      // 4. Retrigger full generation of intakes and upcoming cards
+      await retriggerGenerateMedicine();
     } catch (e) {
       debugPrint('❌ Error saving medication: $e');
       _errorMessage = 'Failed to save medication: $e';
@@ -620,6 +674,9 @@ class MedicationProvider extends ChangeNotifier {
       _selectedDateIntakes.removeWhere(
         (i) => i.schedule.medication.medicationId == medicationId,
       );
+
+      // 6. Retrigger full generation of intakes and upcoming cards
+      await retriggerGenerateMedicine();
     } catch (e) {
       debugPrint('❌ Error deleting medication: $e');
       _errorMessage = 'Failed to delete medication: $e';
@@ -627,6 +684,47 @@ class MedicationProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  /// Toggle medication active status and immediately re-trigger card/intake generation
+  Future<void> toggleMedicationActive(String medicationId, bool isActive) async {
+    if (_userId == null) return;
+    final medIdx = _medications.indexWhere((m) => m.medicationId == medicationId);
+    if (medIdx < 0) return;
+
+    final updated = _medications[medIdx].copyWith(isActive: isActive);
+    _medications[medIdx] = updated;
+
+    for (int i = 0; i < _schedules.length; i++) {
+      if (_schedules[i].medication.medicationId == medicationId) {
+        _schedules[i] = _schedules[i].copyWith(medication: updated);
+      }
+    }
+
+    notifyListeners();
+
+    try {
+      await _firestore
+          .collection('users')
+          .doc(_userId)
+          .collection('medications')
+          .doc(medicationId)
+          .set({'isActive': isActive}, SetOptions(merge: true));
+
+      await retriggerGenerateMedicine();
+    } catch (e) {
+      debugPrint('Error toggling medication active: $e');
+    }
+  }
+
+  /// Retriggers the medicine generation engine to compute cards,
+  /// regenerate intakes for today and tomorrow, update upcoming doses,
+  /// reschedule notification alarms, and notify all UI listeners.
+  Future<void> retriggerGenerateMedicine() async {
+    _setupIntakeListeners(_selectedDate);
+    _computeFinalIntakes(_selectedDate, autoMarkMissed: true);
+    _scheduleMedicationNotifications();
+    notifyListeners();
   }
 
   /// Schedule notifications for all upcoming pending intakes today & tomorrow
@@ -699,6 +797,199 @@ class MedicationProvider extends ChangeNotifier {
 
     // Schedule a one-shot timer for the next 4:00 AM circadian boundary.
     _scheduleCircadianResetTimer();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // USAGE-BASED PERSONALIZATION & ADAPTIVE INTELLIGENCE
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /// Re-evaluates personalization suggestions, notification modes, and up-next rankings.
+  /// Reuses in-memory cached streams and tasks with zero extra Firestore reads.
+  Future<void> refreshPersonalizationInsights([List<Task>? tasks]) async {
+    if (tasks != null) {
+      _cachedTasksForPersonalization = tasks;
+    }
+
+    try {
+      _isPersonalizationEnabled = await PersonalizationService.isPersonalizationEnabled();
+    } catch (_) {
+      _isPersonalizationEnabled = true;
+    }
+
+    if (!_isPersonalizationEnabled) {
+      _activeReminderShiftSuggestion = null;
+      _activeCircadianCutoffSuggestion = null;
+      _rankedUpNextItems = [];
+      notifyListeners();
+      return;
+    }
+
+    final history = _rawRecordedIntakes.values.toList();
+    Set<String> dismissedMedIds = const {};
+    Set<int> dismissedCutoffs = const {};
+    int currentCutoff = MedicationIntake.defaultCircadianCutoffHour;
+
+    try {
+      dismissedMedIds = await PersonalizationService.getActiveDismissedReminderShifts();
+      dismissedCutoffs = await PersonalizationService.getActiveDismissedCircadianCutoffs();
+      currentCutoff = await PersonalizationService.getCircadianCutoffHour();
+    } catch (e) {
+      debugPrint('MedicationProvider: Error reading personalization preferences: $e');
+    }
+
+    // 1. Analyze reminder shifts across all active medications
+    ReminderShiftSuggestion? shiftSuggestion;
+    for (final med in _medications) {
+      if (!med.isActive) continue;
+      final sched = _schedules.cast<MedicationSchedule?>().firstWhere(
+        (s) => s?.medication.medicationId == med.medicationId,
+        orElse: () => null,
+      );
+      final res = PersonalizationService.analyzeReminderShift(
+        history: history,
+        medicationId: med.medicationId,
+        medicationName: med.name,
+        schedule: sched,
+        dismissedMedicationIds: dismissedMedIds,
+      );
+      if (res != null) {
+        shiftSuggestion = res;
+        break;
+      }
+    }
+    _activeReminderShiftSuggestion = shiftSuggestion;
+
+    // 2. Analyze circadian cutoff
+    _activeCircadianCutoffSuggestion = PersonalizationService.analyzeCircadianCutoff(
+      medicationHistory: history,
+      taskHistory: _cachedTasksForPersonalization,
+      currentCutoffHour: currentCutoff,
+      dismissedCutoffHours: dismissedCutoffs,
+    );
+
+    // 3. Adherence-aware notification profile
+    _notificationProfileConfig = PersonalizationService.computeNotificationProfile(
+      history: history,
+    );
+
+    // 4. Smart "Up Next" ranking
+    _rankedUpNextItems = PersonalizationService.rankUpNextItems(
+      pendingMedications: _selectedDateIntakes.where((i) => i.status == IntakeStatus.pending).toList(),
+      pendingTasks: _cachedTasksForPersonalization.where((t) => !t.isCompleted).toList(),
+      historyMedications: history,
+      historyTasks: _cachedTasksForPersonalization,
+    );
+
+    notifyListeners();
+  }
+
+  /// One-tap Apply: updates the schedule's reminder time in Firestore and local collections.
+  Future<void> applyReminderShift(ReminderShiftSuggestion suggestion) async {
+    try {
+      final sched = _schedules.firstWhere(
+        (s) => s.scheduleId == suggestion.scheduleId || s.medication.medicationId == suggestion.medicationId,
+      );
+      final med = _medications.firstWhere(
+        (m) => m.medicationId == suggestion.medicationId,
+      );
+
+      final updatedTimes = List<TimeOfDay>.from(sched.timesPerDay);
+      final idx = updatedTimes.indexWhere(
+        (t) => t.hour == suggestion.currentTime.hour && t.minute == suggestion.currentTime.minute,
+      );
+      if (idx >= 0) {
+        updatedTimes[idx] = suggestion.suggestedTime;
+      } else if (updatedTimes.isNotEmpty) {
+        updatedTimes[0] = suggestion.suggestedTime;
+      } else {
+        updatedTimes.add(suggestion.suggestedTime);
+      }
+
+      final updatedSchedule = sched.copyWith(timesPerDay: updatedTimes);
+      await saveMedication(medication: med, schedule: updatedSchedule);
+
+      AnalyticsService.logPersonalizationApplied(
+        type: 'reminder_shift',
+        parameters: {
+          'medicationId': suggestion.medicationId,
+          'oldTime': '${suggestion.currentTime.hour}:${suggestion.currentTime.minute}',
+          'newTime': '${suggestion.suggestedTime.hour}:${suggestion.suggestedTime.minute}',
+          'offsetMinutes': suggestion.averageOffsetMinutes,
+        },
+      );
+
+      _activeReminderShiftSuggestion = null;
+      await refreshPersonalizationInsights();
+    } catch (e) {
+      debugPrint('MedicationProvider applyReminderShift error: $e');
+      rethrow;
+    }
+  }
+
+  /// One-tap Dismiss: snoozes this reminder shift suggestion for 14 days.
+  Future<void> dismissReminderShift(ReminderShiftSuggestion suggestion) async {
+    try {
+      await PersonalizationService.dismissReminderShift(suggestion.medicationId);
+      AnalyticsService.logPersonalizationDismissed(
+        type: 'reminder_shift',
+        parameters: {
+          'medicationId': suggestion.medicationId,
+        },
+      );
+    } catch (e) {
+      debugPrint('MedicationProvider dismissReminderShift error: $e');
+    }
+    _activeReminderShiftSuggestion = null;
+    notifyListeners();
+  }
+
+  /// One-tap Apply: updates the circadian day cutoff hour.
+  Future<void> applyCircadianCutoff(CircadianCutoffSuggestion suggestion) async {
+    try {
+      await PersonalizationService.setCircadianCutoffHour(suggestion.suggestedCutoffHour);
+      AnalyticsService.logPersonalizationApplied(
+        type: 'circadian_cutoff',
+        parameters: {
+          'oldCutoff': suggestion.currentCutoffHour,
+          'newCutoff': suggestion.suggestedCutoffHour,
+          'lateNightCount': suggestion.lateNightCount,
+        },
+      );
+      _activeCircadianCutoffSuggestion = null;
+      await retriggerGenerateMedicine();
+      await refreshPersonalizationInsights();
+    } catch (e) {
+      debugPrint('MedicationProvider applyCircadianCutoff error: $e');
+      rethrow;
+    }
+  }
+
+  /// One-tap Dismiss: snoozes this circadian cutoff suggestion for 14 days.
+  Future<void> dismissCircadianCutoff(CircadianCutoffSuggestion suggestion) async {
+    try {
+      await PersonalizationService.dismissCircadianCutoff(suggestion.suggestedCutoffHour);
+      AnalyticsService.logPersonalizationDismissed(
+        type: 'circadian_cutoff',
+        parameters: {
+          'cutoffHour': suggestion.suggestedCutoffHour,
+        },
+      );
+    } catch (e) {
+      debugPrint('MedicationProvider dismissCircadianCutoff error: $e');
+    }
+    _activeCircadianCutoffSuggestion = null;
+    notifyListeners();
+  }
+
+  /// Toggles smart personalization globally.
+  Future<void> setPersonalizationEnabled(bool enabled) async {
+    _isPersonalizationEnabled = enabled;
+    try {
+      await PersonalizationService.setPersonalizationEnabled(enabled);
+    } catch (e) {
+      debugPrint('MedicationProvider setPersonalizationEnabled error: $e');
+    }
+    await refreshPersonalizationInsights();
   }
 
   /// Schedule a timer that fires at the next 4:00 AM to regenerate intakes

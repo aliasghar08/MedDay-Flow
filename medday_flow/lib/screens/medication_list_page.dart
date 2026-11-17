@@ -1,10 +1,14 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:medday_flow/providers/auth_provider.dart' as app_auth;
 import 'package:medday_flow/providers/medication_provider.dart';
 import 'package:medday_flow/screens/add_medication_page.dart';
 import 'package:medday_flow/screens/medication_detail_page.dart';
+import 'package:medday_flow/services/medication_pdf_report_service.dart';
 import 'package:medday_flow/utils/medication_model/frequency_and_dosage.dart';
 import 'package:medday_flow/utils/medication_model/medication_intake.dart';
 import 'package:medday_flow/utils/medication_model/medication_model.dart';
+import 'package:medday_flow/widgets/medication_pill_graphic.dart';
+import 'package:medday_flow/widgets/ad_banner_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:medday_flow/services/custom_state_management.dart';
@@ -132,6 +136,7 @@ class _MedicationListPageState extends State<MedicationListPage>
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text('Add Medication', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
+      bottomNavigationBar: const AdBannerWidget(),
     );
   }
 
@@ -285,6 +290,7 @@ class _MedicationListPageState extends State<MedicationListPage>
           const SizedBox(height: 12),
           ...dueNow.map((intake) {
             final med = intake.schedule.medication;
+            final medColor = _parseColor(med.color);
             final timeStr = DateFormat('h:mm a').format(intake.scheduledTime);
             return Container(
               margin: const EdgeInsets.only(bottom: 8),
@@ -295,22 +301,76 @@ class _MedicationListPageState extends State<MedicationListPage>
               ),
               child: Row(
                 children: [
-                  Text(med.icon, style: const TextStyle(fontSize: 20)),
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: medColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Center(
+                      child: MedicationPillGraphic(
+                        shape: MedicationShape.fromString(med.shape),
+                        primaryColor: medColor,
+                        secondaryColor: med.secondaryColor != null ? _parseColor(med.secondaryColor!) : null,
+                        size: 26,
+                        fallbackIcon: med.icon,
+                      ),
+                    ),
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          med.name,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
+                        // Dedicated row for medicine name (maxLines: 1, ellipsis)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                med.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: isDark ? Colors.white : Colors.black87,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
+                        if (med.formula != null && med.formula!.isNotEmpty) ...[
+                          const SizedBox(height: 1),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.biotech_outlined,
+                                size: 11,
+                                color: isDark ? Colors.cyan.shade200 : const Color(0xFF0E7490),
+                              ),
+                              const SizedBox(width: 3),
+                              Expanded(
+                                child: Text(
+                                  med.formula!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontStyle: FontStyle.italic,
+                                    fontWeight: FontWeight.w500,
+                                    color: isDark ? Colors.cyan.shade200 : const Color(0xFF0E7490),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: 2),
                         Text(
                           '${med.dosage} ${med.unit.name} • Scheduled $timeStr',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 12,
                             color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
@@ -738,33 +798,83 @@ class _MedicationListPageState extends State<MedicationListPage>
           padding: const EdgeInsets.all(14.0),
           child: Row(
             children: [
-              // Medication Icon Avatar
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: medColor.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Text(
-                    med.icon,
-                    style: const TextStyle(fontSize: 22),
-                  ),
-                ),
+              // Medication Pill Graphic
+              MedicationPillGraphic(
+                shape: MedicationShape.fromString(med.shape),
+                primaryColor: medColor,
+                secondaryColor: med.secondaryColor != null ? _parseColor(med.secondaryColor!) : null,
+                size: 46,
               ),
               const SizedBox(width: 14),
 
-              // Title, Dosage, Instructions
+              // Title, Formula, Dosage, Instructions
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Top row: scheduled time badge + class badge
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.blueAccent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.access_time_rounded, size: 12, color: Colors.blueAccent),
+                              const SizedBox(width: 4),
+                              Text(
+                                timeStr,
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.blueAccent,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (med.medicationClass != null && med.medicationClass!.trim().isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: (isDark ? Colors.purple.shade900 : Colors.purple.shade50),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: Colors.purple.withValues(alpha: 0.3),
+                                  width: 0.8,
+                                ),
+                              ),
+                              child: Text(
+                                med.medicationClass!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? Colors.purple.shade200 : Colors.purple.shade800,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+
+                    // Dedicated row for medicine name (maxLines: 1, ellipsis)
                     Row(
                       children: [
                         Expanded(
                           child: Text(
                             med.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -775,34 +885,57 @@ class _MedicationListPageState extends State<MedicationListPage>
                             ),
                           ),
                         ),
-                        Text(
-                          timeStr,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.blueAccent,
-                          ),
-                        ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+
+                    // Formula row (active ingredient / chemical composition)
+                    if (med.formula != null && med.formula!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.biotech_outlined,
+                            size: 13,
+                            color: isDark ? Colors.cyan.shade200 : const Color(0xFF0E7490),
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              med.formula!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontStyle: FontStyle.italic,
+                                fontWeight: FontWeight.w500,
+                                color: isDark ? Colors.cyan.shade200 : const Color(0xFF0E7490),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+
+                    const SizedBox(height: 3),
                     Text(
                       '${med.dosage} ${med.unit.name}${intake.schedule.instructions != null && intake.schedule.instructions!.isNotEmpty ? ' • ${intake.schedule.instructions}' : ''}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 12.5,
                         color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                       ),
                     ),
                     if (isTaken && intake.actualTime != null) ...[
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 3),
                       Row(
                         children: [
-                          const Icon(Icons.check_circle, size: 14, color: Colors.green),
+                          const Icon(Icons.check_circle, size: 13, color: Colors.green),
                           const SizedBox(width: 4),
                           Text(
                             'Taken at ${DateFormat('h:mm a').format(intake.actualTime!)}',
                             style: const TextStyle(
-                              fontSize: 12,
+                              fontSize: 11.5,
                               fontWeight: FontWeight.w600,
                               color: Colors.green,
                             ),
@@ -1008,75 +1141,8 @@ class _MedicationListPageState extends State<MedicationListPage>
           elevation: 1,
           margin: const EdgeInsets.only(bottom: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            leading: Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: medColor.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(med.icon, style: const TextStyle(fontSize: 22)),
-              ),
-            ),
-            title: Text(
-              med.name,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 4),
-                Text('${med.dosage} ${med.unit.name}'),
-                if (schedules.isNotEmpty)
-                  Text(
-                    '${schedules.first.frequency.name.toUpperCase()} • ${schedules.first.timesPerDay.length}x daily',
-                    style: const TextStyle(fontSize: 12, color: Colors.blueAccent),
-                  ),
-              ],
-            ),
-            trailing: PopupMenuButton<String>(
-              onSelected: (value) async {
-                if (value == 'edit') {
-                  final schedule = schedules.isNotEmpty ? schedules.first : null;
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => AddMedicationPage(
-                        existingMedication: med,
-                        existingSchedule: schedule,
-                      ),
-                    ),
-                  );
-                } else if (value == 'delete') {
-                  _showDeleteConfirmDialog(med, medProvider);
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'edit',
-                  child: Row(
-                    children: [
-                      Icon(Icons.edit, size: 20),
-                      SizedBox(width: 8),
-                      Text('Edit'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'delete',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete, size: 20, color: Colors.red),
-                      SizedBox(width: 8),
-                      Text('Delete', style: TextStyle(color: Colors.red)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
             onTap: () {
               Navigator.push(
                 context,
@@ -1085,6 +1151,213 @@ class _MedicationListPageState extends State<MedicationListPage>
                 ),
               );
             },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  // Pill Graphic
+                  MedicationPillGraphic(
+                    shape: MedicationShape.fromString(med.shape),
+                    primaryColor: medColor,
+                    secondaryColor: med.secondaryColor != null ? _parseColor(med.secondaryColor!) : null,
+                    size: 46,
+                  ),
+                  const SizedBox(width: 14),
+
+                  // Info Column
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (med.medicationClass != null && med.medicationClass!.trim().isNotEmpty) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: (isDark ? Colors.purple.shade900 : Colors.purple.shade50),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: Colors.purple.withValues(alpha: 0.3),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: Text(
+                              med.medicationClass!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.purple.shade200 : Colors.purple.shade800,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                        ],
+
+                        // Dedicated row for medicine name (maxLines: 1, ellipsis)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                med.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        // Formula row (active ingredient / chemical composition)
+                        if (med.formula != null && med.formula!.trim().isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.biotech_outlined,
+                                size: 13,
+                                color: isDark ? Colors.cyan.shade200 : const Color(0xFF0E7490),
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  med.formula!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontStyle: FontStyle.italic,
+                                    fontWeight: FontWeight.w500,
+                                    color: isDark ? Colors.cyan.shade200 : const Color(0xFF0E7490),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+
+                        const SizedBox(height: 3),
+                        Text(
+                          '${med.dosage} ${med.unit.name}${schedules.isNotEmpty ? ' • ${schedules.first.frequency.name.toUpperCase()} (${schedules.first.timesPerDay.length}x daily)' : ''}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Actions menu
+                  PopupMenuButton<String>(
+                    onSelected: (value) async {
+                      final schedule = schedules.isNotEmpty ? schedules.first : null;
+                      if (value == 'analytics') {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => MedicationDetailPage(
+                              medication: med,
+                              initialTabIndex: 1, // Analytics tab
+                            ),
+                          ),
+                        );
+                      } else if (value == 'export_pdf') {
+                        final auth = context.read<app_auth.AuthProvider>();
+                        final userId = auth.user?.uid;
+                        List<MedicationIntake> history = [];
+                        if (userId != null) {
+                          try {
+                            final snap = await FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(userId)
+                                .collection('medications')
+                                .doc(med.medicationId)
+                                .collection('intakes')
+                                .orderBy('scheduledTime', descending: true)
+                                .limit(500)
+                                .get();
+                            history = snap.docs
+                                .map((d) => MedicationIntake.fromMap(d.data(), d.id, schedule))
+                                .toList();
+                          } catch (_) {}
+                        }
+                        if (context.mounted) {
+                          await MedicationPdfReportService.exportPdfReport(
+                            context: context,
+                            medication: med,
+                            history: history,
+                            schedule: schedule,
+                            userName: auth.user?.displayName,
+                            userEmail: auth.user?.email,
+                          );
+                        }
+                      } else if (value == 'edit') {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AddMedicationPage(
+                              existingMedication: med,
+                              existingSchedule: schedule,
+                            ),
+                          ),
+                        );
+                      } else if (value == 'delete') {
+                        _showDeleteConfirmDialog(med, medProvider);
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'analytics',
+                        child: Row(
+                          children: [
+                            Icon(Icons.insights_rounded, size: 20, color: Colors.blueAccent),
+                            SizedBox(width: 8),
+                            Text('View Analytics & Charts'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'export_pdf',
+                        child: Row(
+                          children: [
+                            Icon(Icons.picture_as_pdf_rounded, size: 20, color: Colors.deepPurple),
+                            SizedBox(width: 8),
+                            Text('Export PDF Report'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuDivider(),
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit, size: 20),
+                            SizedBox(width: 8),
+                            Text('Edit'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete, size: 20, color: Colors.red),
+                            SizedBox(width: 8),
+                            Text('Delete', style: TextStyle(color: Colors.red)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
         );
       },
